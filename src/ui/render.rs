@@ -135,7 +135,7 @@ fn render_list(f: &mut Frame, app: &mut App) {
         Span::raw("Enter"),
         Span::styled(":view", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
-        Span::raw("q"),
+        Span::raw("q/Esc"),
         Span::styled(":quit", Style::default().fg(Color::DarkGray)),
     ]))
     .style(Style::default().fg(Color::White))
@@ -232,11 +232,8 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
-        Span::raw("ESC/Backspace"),
+        Span::raw("q/Esc"),
         Span::styled(":back", Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        Span::raw("q"),
-        Span::styled(":quit", Style::default().fg(Color::DarkGray)),
     ]))
     .style(Style::default().fg(Color::White))
     .alignment(Alignment::Center);

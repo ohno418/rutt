@@ -22,7 +22,6 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<(
             if key.kind == KeyEventKind::Press {
                 match app.mode {
                     ViewMode::List => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('j') | KeyCode::Down => app.next(),
                         KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.next()
@@ -41,11 +40,11 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<(
                         KeyCode::Char('M') => app.goto_page_middle(),
                         KeyCode::Char('L') => app.goto_page_bottom(),
                         KeyCode::Enter => app.view_email(),
+                        KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                         _ => {}
                     },
                     ViewMode::Detail(_) => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Esc | KeyCode::Backspace => app.back_to_list(),
+                        KeyCode::Char('q') | KeyCode::Esc => app.back_to_list(),
                         _ => {}
                     },
                 }
