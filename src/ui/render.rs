@@ -27,7 +27,7 @@ fn render_list(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(5),
             Constraint::Length(1),
         ])
@@ -154,7 +154,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Length(7),  // Headers section
             Constraint::Min(5),      // Body section
             Constraint::Length(1),
