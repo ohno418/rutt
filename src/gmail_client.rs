@@ -121,7 +121,7 @@ impl GmailClient {
                             .unwrap_or("");
 
                         if !name.is_empty() {
-                            name.to_string()
+                            format!("{} <{}@{}>", name, mailbox, host)
                         } else {
                             format!("{}@{}", mailbox, host)
                         }
@@ -149,7 +149,7 @@ impl GmailClient {
                                 .unwrap_or("");
 
                             if !name.is_empty() {
-                                name.to_string()
+                                format!("{} <{}@{}>", name, mailbox, host)
                             } else {
                                 format!("{}@{}", mailbox, host)
                             }
@@ -179,7 +179,7 @@ impl GmailClient {
                                 .unwrap_or("");
 
                             if !name.is_empty() {
-                                name.to_string()
+                                format!("{} <{}@{}>", name, mailbox, host)
                             } else {
                                 format!("{}@{}", mailbox, host)
                             }
@@ -209,7 +209,7 @@ impl GmailClient {
                                 .unwrap_or("");
 
                             if !name.is_empty() {
-                                name.to_string()
+                                format!("{} <{}@{}>", name, mailbox, host)
                             } else {
                                 format!("{}@{}", mailbox, host)
                             }
