@@ -24,7 +24,7 @@ pub struct Email {
     /// Carbon copy recipients.
     pub cc: Vec<NameAddr>,
     /// Blind carbon copy recipients.
-    pub bcc: Option<String>,
+    pub bcc: Vec<NameAddr>,
     /// Date and time the email was sent.
     pub date: DateTime<Local>,
     /// Whether the email has been read.
@@ -260,35 +260,39 @@ impl GmailClient {
                     })
                     .unwrap_or_else(Vec::new);
 
-                let bcc = envelope.bcc.as_ref().map(|addrs| {
-                    addrs
-                        .iter()
-                        .map(|addr| {
-                            let name = addr
-                                .name
-                                .as_ref()
-                                .and_then(|n| std::str::from_utf8(n).ok())
-                                .unwrap_or("");
-                            let mailbox = addr
-                                .mailbox
-                                .as_ref()
-                                .and_then(|m| std::str::from_utf8(m).ok())
-                                .unwrap_or("");
-                            let host = addr
-                                .host
-                                .as_ref()
-                                .and_then(|h| std::str::from_utf8(h).ok())
-                                .unwrap_or("");
-
-                            if !name.is_empty() {
-                                format!("{} <{}@{}>", name, mailbox, host)
-                            } else {
-                                format!("{}@{}", mailbox, host)
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                });
+                let bcc = envelope
+                    .bcc
+                    .as_ref()
+                    .map(|addrs| {
+                        addrs
+                            .iter()
+                            .map(|addr| {
+                                let name = addr
+                                    .name
+                                    .as_ref()
+                                    .and_then(|n| std::str::from_utf8(n).ok())
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| s.to_string());
+                                let mailbox = addr
+                                    .mailbox
+                                    .as_ref()
+                                    .and_then(|m| std::str::from_utf8(m).ok())
+                                    .unwrap_or("");
+                                let host = addr
+                                    .host
+                                    .as_ref()
+                                    .and_then(|h| std::str::from_utf8(h).ok())
+                                    .unwrap_or("");
+                                let email = if !mailbox.is_empty() && !host.is_empty() {
+                                    Some(format!("{}@{}", mailbox, host))
+                                } else {
+                                    None
+                                };
+                                NameAddr { name, email }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(Vec::new);
 
                 emails.push(Email {
                     _uid,

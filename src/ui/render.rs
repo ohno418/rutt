@@ -242,7 +242,13 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     }
 
     // Add Bcc field if present
-    if let Some(bcc) = &email.bcc {
+    if !email.bcc.is_empty() {
+        let bcc = email
+            .bcc
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         content.push(Line::from(vec![
             Span::styled(
                 "Bcc: ",
