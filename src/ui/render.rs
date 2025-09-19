@@ -1,3 +1,8 @@
+//! UI rendering functions for email list and detail views.
+//!
+//! Provides rendering logic for the terminal interface including email lists,
+//! headers, footers, and email detail display.
+
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout},

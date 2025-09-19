@@ -1,3 +1,8 @@
+//! A minimal Gmail IMAP client with a mutt-like terminal interface.
+//!
+//! This crate provides a simple TUI application for reading Gmail messages via
+//! IMAP connection with SSL/TLS support.
+
 pub mod config;
 pub mod gmail_client;
 pub mod ui;

@@ -1,3 +1,8 @@
+//! Application state management and navigation logic.
+//!
+//! Handles email list state, view modes, and user navigation between list and
+//! detail views.
+
 use ratatui::widgets::ListState;
 use crate::gmail_client::{Email, GmailClient};
 

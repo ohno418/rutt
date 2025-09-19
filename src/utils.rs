@@ -1,3 +1,8 @@
+//! Utility functions for date formatting and other helpers.
+//!
+//! Provides common utility functions used throughout the application for data
+//! formatting and manipulation.
+
 use chrono::Local;
 
 pub fn format_date(date: &chrono::DateTime<Local>) -> String {

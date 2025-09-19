@@ -1,3 +1,8 @@
+//! Event handling and main application loop.
+//!
+//! Processes keyboard input and manages the main UI event loop for navigation
+//! and application control.
+
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};

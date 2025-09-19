@@ -1,3 +1,8 @@
+//! Configuration loading and management for Gmail IMAP settings.
+//!
+//! Handles loading TOML configuration files containing Gmail credentials and
+//! connection parameters.
+
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs;

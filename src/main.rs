@@ -1,3 +1,8 @@
+//! Main application entry point for the rutt Gmail terminal client.
+//!
+//! Sets up terminal UI, connects to Gmail IMAP, fetches emails, and runs the
+//! interactive terminal interface.
+
 use anyhow::{Context, Result};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},

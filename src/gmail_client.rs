@@ -1,3 +1,8 @@
+//! Gmail IMAP client implementation with SSL/TLS support.
+//!
+//! Provides secure connection to Gmail's IMAP server, email fetching, and
+//! message parsing functionality.
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use imap::Session;
