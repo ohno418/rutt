@@ -76,10 +76,11 @@ fn render_list(f: &mut Frame, app: &mut App) {
 
             let date_str = format_date(&email.date);
 
-            let from = if email.from.len() > 25 {
-                format!("{}...", &email.from[..22])
+            let from = &email.from.name_or_addr().unwrap_or("(unknown)");
+            let from = if from.len() > 25 {
+                format!("{}...", &from[..22])
             } else {
-                format!("{:<25}", email.from)
+                format!("{:<25}", from)
             };
 
             let subject = if email.subject.len() > 100 {
@@ -195,7 +196,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(&email.from),
+            Span::raw(email.from.to_string()),
         ]),
     ];
 

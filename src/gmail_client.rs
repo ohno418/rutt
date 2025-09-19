@@ -8,7 +8,7 @@ use chrono::{DateTime, Local};
 use imap::Session;
 use mailparse::parse_mail;
 use native_tls::{TlsConnector, TlsStream};
-use std::net::TcpStream;
+use std::{fmt, net::TcpStream};
 
 /// Represents an email message with metadata.
 #[derive(Debug, Clone)]
@@ -18,7 +18,7 @@ pub struct Email {
     /// Subject line of the email.
     pub subject: String,
     /// Sender's name or email address.
-    pub from: String,
+    pub from: NameAddr,
     /// Primary recipients.
     pub to: Option<String>,
     /// Carbon copy recipients.
@@ -31,6 +31,64 @@ pub struct Email {
     pub is_read: bool,
     /// Email body content (lazily loaded).
     pub body: Option<String>,
+}
+
+/// Represents an email address with an optional display name.
+///
+/// This structure can represent email addresses in various formats:
+/// - Name and email: "John Doe <john@example.com>"
+/// - Email only: "john@example.com"
+/// - Name only: "John Doe" (less common)
+#[derive(Debug, Clone)]
+pub struct NameAddr {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+impl fmt::Display for NameAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self {
+                name: Some(name),
+                email: Some(email),
+            } => write!(f, "{} <{}>", name, email),
+            Self {
+                name: None,
+                email: Some(email),
+            } => write!(f, "{}", email),
+            Self {
+                name: Some(name),
+                email: None,
+            } => write!(f, "{} <(unknown)>", name),
+            Self {
+                name: None,
+                email: None,
+            } => write!(f, "(unknown)"),
+        }
+    }
+}
+
+impl NameAddr {
+    /// Returns the display name if available, otherwise the email address.
+    ///
+    /// This method prioritizes the display name over the email address for
+    /// user-friendly display purposes. Returns `None` if both fields are empty.
+    pub fn name_or_addr(&self) -> Option<&str> {
+        match self {
+            Self {
+                name: Some(name),
+                email: _,
+            } => Some(name),
+            Self {
+                name: None,
+                email: Some(email),
+            } => Some(email),
+            Self {
+                name: None,
+                email: None,
+            } => None,
+        }
+    }
 }
 
 /// Gmail IMAP client for secure email access.
@@ -115,14 +173,18 @@ impl GmailClient {
                             .as_ref()
                             .and_then(|h| std::str::from_utf8(h).ok())
                             .unwrap_or("");
-
-                        if !name.is_empty() {
-                            format!("{} <{}@{}>", name, mailbox, host)
+                        let name = if !name.is_empty() {
+                            Some(name.to_string())
                         } else {
-                            format!("{}@{}", mailbox, host)
-                        }
+                            None
+                        };
+                        let email = Some(format!("{}@{}", mailbox, host));
+                        NameAddr { name, email }
                     })
-                    .unwrap_or_else(|| "(unknown)".to_string());
+                    .unwrap_or_else(|| NameAddr {
+                        name: None,
+                        email: None,
+                    });
 
                 let cc = envelope.cc.as_ref().map(|addrs| {
                     addrs

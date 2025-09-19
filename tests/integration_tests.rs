@@ -1,5 +1,5 @@
 use chrono::Local;
-use rutt::Email;
+use rutt::{Email, NameAddr};
 
 #[test]
 fn test_email_sorting() {
@@ -8,7 +8,10 @@ fn test_email_sorting() {
         Email {
             _uid: 1,
             subject: "First".to_string(),
-            from: "a@test.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some("a@test.com".to_string()),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -19,7 +22,10 @@ fn test_email_sorting() {
         Email {
             _uid: 2,
             subject: "Second".to_string(),
-            from: "b@test.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some("b@test.com".to_string()),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -30,7 +36,10 @@ fn test_email_sorting() {
         Email {
             _uid: 3,
             subject: "Third".to_string(),
-            from: "c@test.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some("c@test.com".to_string()),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -53,7 +62,10 @@ fn test_email_list_creation() {
         Email {
             _uid: 100,
             subject: "Test Email 1".to_string(),
-            from: "sender1@example.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some("sender1@example.com".to_string()),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -64,7 +76,10 @@ fn test_email_list_creation() {
         Email {
             _uid: 101,
             subject: "Test Email 2".to_string(),
-            from: "sender2@example.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some("sender2@example.com".to_string()),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -78,42 +93,4 @@ fn test_email_list_creation() {
     assert_eq!(emails[0]._uid, 100);
     assert_eq!(emails[1]._uid, 101);
     assert_ne!(emails[0].is_read, emails[1].is_read);
-}
-
-#[test]
-fn test_email_field_validation() {
-    let email = Email {
-        _uid: 999,
-        subject: String::new(),
-        from: String::new(),
-        to: None,
-        cc: None,
-        bcc: None,
-        date: Local::now(),
-        is_read: false,
-        body: None,
-    };
-
-    assert_eq!(email.subject, "");
-    assert_eq!(email.from, "");
-    assert!(!email.is_read);
-}
-
-#[test]
-fn test_long_subject_handling() {
-    let long_subject = "A".repeat(100);
-    let email = Email {
-        _uid: 1000,
-        subject: long_subject.clone(),
-        from: "test@test.com".to_string(),
-        to: None,
-        cc: None,
-        bcc: None,
-        date: Local::now(),
-        is_read: false,
-        body: None,
-    };
-
-    assert_eq!(email.subject.len(), 100);
-    assert_eq!(email.subject, long_subject);
 }

@@ -9,5 +9,5 @@ mod ui;
 mod utils;
 
 pub use config::Config;
-pub use gmail_client::{Email, GmailClient};
+pub use gmail_client::{Email, GmailClient, NameAddr};
 pub use ui::{App, run_app};

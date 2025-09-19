@@ -324,6 +324,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gmail_client::NameAddr;
     use chrono::Local;
 
     #[test]
@@ -332,7 +333,10 @@ mod tests {
             Email {
                 _uid: 1,
                 subject: "Email 1".to_string(),
-                from: "test1@test.com".to_string(),
+                from: NameAddr {
+                    name: None,
+                    email: Some("test1@test.com".to_string()),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -343,7 +347,10 @@ mod tests {
             Email {
                 _uid: 2,
                 subject: "Email 2".to_string(),
-                from: "test2@test.com".to_string(),
+                from: NameAddr {
+                    name: None,
+                    email: Some("test2@test.com".to_string()),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -390,7 +397,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -435,7 +445,10 @@ mod tests {
         let emails = vec![Email {
             _uid: 1,
             subject: "Test".to_string(),
-            from: "test@test.com".to_string(),
+            from: NameAddr {
+                name: None,
+                email: Some(format!("test@test.com")),
+            },
             to: None,
             cc: None,
             bcc: None,
@@ -469,7 +482,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -554,7 +570,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -614,7 +633,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -649,7 +671,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -704,7 +729,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -748,7 +776,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
@@ -799,7 +830,10 @@ mod tests {
             .map(|i| Email {
                 _uid: i + 1,
                 subject: format!("Email {}", i + 1),
-                from: format!("test{}@test.com", i + 1),
+                from: NameAddr {
+                    name: None,
+                    email: Some(format!("test{}@test.com", i + 1)),
+                },
                 to: None,
                 cc: None,
                 bcc: None,
