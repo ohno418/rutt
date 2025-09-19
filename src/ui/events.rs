@@ -10,6 +10,10 @@ use ratatui::{Terminal, backend::Backend};
 use crate::ui::app::{App, ViewMode};
 use crate::ui::render::ui;
 
+/// Main application event loop handling keyboard input and UI updates.
+///
+/// Continuously renders the UI and processes keyboard events until the user
+/// quits. Supports navigation in list view and switching between views.
 pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
     loop {
         terminal.draw(|f| ui(f, &app))?;

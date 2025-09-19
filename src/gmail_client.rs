@@ -10,20 +10,28 @@ use mailparse::parse_mail;
 use native_tls::{TlsConnector, TlsStream};
 use std::net::TcpStream;
 
+/// Represents an email message with metadata.
 #[derive(Debug, Clone)]
 pub struct Email {
+    /// Unique identifier for the email in the mailbox.
     pub _uid: u32,
+    /// Subject line of the email.
     pub subject: String,
+    /// Sender's name or email address.
     pub from: String,
+    /// Date and time the email was sent.
     pub date: DateTime<Local>,
+    /// Whether the email has been read.
     pub is_read: bool,
 }
 
+/// Gmail IMAP client for secure email access.
 pub struct GmailClient {
     session: Session<TlsStream<TcpStream>>,
 }
 
 impl GmailClient {
+    /// Establishes a secure connection to Gmail's IMAP server.
     pub fn connect(username: &str, password: &str) -> Result<Self> {
         let tls = TlsConnector::builder()
             .build()
@@ -40,6 +48,7 @@ impl GmailClient {
         Ok(GmailClient { session })
     }
 
+    /// Fetches the most recent emails from the INBOX.
     pub fn fetch_emails(&mut self, limit: u32) -> Result<Vec<Email>> {
         self.session
             .select("INBOX")
@@ -137,6 +146,10 @@ impl GmailClient {
     }
 }
 
+/// Parses date from email header bytes using multiple date formats.
+///
+/// Attempts to parse RFC2822 format first, then falls back to a common
+/// alternative format if that fails.
 fn parse_date_from_header(header: &[u8]) -> Option<DateTime<Local>> {
     let mail = parse_mail(header).ok()?;
 

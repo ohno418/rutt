@@ -5,6 +5,7 @@
 
 use chrono::Local;
 
+/// Formats a date/time for display in the email list.
 pub fn format_date(date: &chrono::DateTime<Local>) -> String {
     date.format("%Y/%m/%d %H:%M").to_string()
 }

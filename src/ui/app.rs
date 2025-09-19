@@ -6,20 +6,29 @@
 use crate::gmail_client::{Email, GmailClient};
 use ratatui::widgets::ListState;
 
+/// Application view modes for different UI states.
 #[derive(Debug, Clone)]
 pub enum ViewMode {
+    /// Email list view showing all emails.
     List,
+    /// Email detail view showing specific email at index.
     Detail(usize),
 }
 
+/// Main application state containing emails and UI state.
 pub struct App {
+    /// Vector of emails to display.
     pub emails: Vec<Email>,
+    /// Current selection state for the email list.
     pub list_state: ListState,
+    /// Gmail client for potential future operations.
     pub _client: GmailClient,
+    /// Current view mode (list or detail).
     pub mode: ViewMode,
 }
 
 impl App {
+    /// Creates a new application instance with provided emails.
     pub fn new(client: GmailClient, emails: Vec<Email>) -> Self {
         let mut list_state = ListState::default();
         if !emails.is_empty() {
@@ -34,6 +43,7 @@ impl App {
         }
     }
 
+    /// Moves selection to the next email in the list.
     pub fn next(&mut self) {
         if self.emails.is_empty() {
             return;
@@ -52,6 +62,7 @@ impl App {
         self.list_state.select(Some(i));
     }
 
+    /// Moves selection to the previous email in the list.
     pub fn previous(&mut self) {
         if self.emails.is_empty() {
             return;
@@ -70,6 +81,7 @@ impl App {
         self.list_state.select(Some(i));
     }
 
+    /// Switches to detail view for the currently selected email.
     pub fn view_email(&mut self) {
         if let Some(selected) = self.list_state.selected() {
             if selected < self.emails.len() {
@@ -78,6 +90,7 @@ impl App {
         }
     }
 
+    /// Returns to the email list view from detail view.
     pub fn back_to_list(&mut self) {
         self.mode = ViewMode::List;
     }

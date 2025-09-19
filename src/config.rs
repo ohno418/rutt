@@ -8,18 +8,24 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+/// Top-level configuration structure containing all settings.
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    /// Gmail-specific configuration settings.
     pub gmail: GmailConfig,
 }
 
+/// Gmail IMAP connection configuration.
 #[derive(Debug, Deserialize)]
 pub struct GmailConfig {
+    /// Gmail username (email address).
     pub username: String,
+    /// Gmail app password for IMAP access.
     pub app_password: String,
 }
 
 impl Config {
+    /// Loads configuration from a TOML file at the specified path.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let contents = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read config from {:?}", path.as_ref()))?;
@@ -29,6 +35,7 @@ impl Config {
         Ok(config)
     }
 
+    /// Loads configuration from the default "config.toml" file.
     pub fn load_default() -> Result<Self> {
         Self::load("config.toml")
     }

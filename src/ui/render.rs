@@ -14,6 +14,7 @@ use ratatui::{
 use crate::ui::app::{App, ViewMode};
 use crate::utils::format_date;
 
+/// Main UI rendering function that dispatches to appropriate view.
 pub fn ui(f: &mut Frame, app: &App) {
     match app.mode {
         ViewMode::List => render_list(f, app),
@@ -21,6 +22,7 @@ pub fn ui(f: &mut Frame, app: &App) {
     }
 }
 
+/// Renders the email list view with header and footer.
 pub fn render_list(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -127,6 +129,7 @@ pub fn render_list(f: &mut Frame, app: &App) {
     f.render_widget(footer, chunks[2]);
 }
 
+/// Renders the email detail view for a specific email.
 pub fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     if idx >= app.emails.len() {
         return;
