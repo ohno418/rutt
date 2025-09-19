@@ -55,7 +55,8 @@ fn render_list(f: &mut Frame, app: &mut App) {
     app.set_visible_items(chunks[1].height as usize);
 
     // Email list - only show items in the visible window.
-    let visible_emails = app.emails
+    let visible_emails = app
+        .emails
         .iter()
         .skip(app.scroll_offset)
         .take(app.visible_items);
@@ -155,8 +156,8 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2),
-            Constraint::Length(7),  // Headers section
-            Constraint::Min(5),      // Body section
+            Constraint::Length(7), // Headers section
+            Constraint::Min(5),    // Body section
             Constraint::Length(1),
         ])
         .split(f.area());
@@ -203,16 +204,19 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         ]),
     ];
 
-    let metadata_widget = Paragraph::new(metadata)
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(Color::White)),
-        );
+    let metadata_widget = Paragraph::new(metadata).block(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(Color::White)),
+    );
     f.render_widget(metadata_widget, chunks[1]);
 
     // Email body
-    let body_text = email.body.as_ref().unwrap_or(&"Loading...".to_string()).clone();
+    let body_text = email
+        .body
+        .as_ref()
+        .unwrap_or(&"Loading...".to_string())
+        .clone();
     let body_lines: Vec<Line> = body_text
         .lines()
         .map(|line| Line::from(line.to_string()))
@@ -220,7 +224,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     let body_widget = Paragraph::new(body_lines)
         .wrap(Wrap { trim: true })
-        .scroll((0, 0));  // Can be enhanced later for scrolling
+        .scroll((0, 0)); // Can be enhanced later for scrolling
     f.render_widget(body_widget, chunks[2]);
 
     // Footer

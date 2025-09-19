@@ -173,9 +173,8 @@ impl App {
         }
 
         // Calculate new scroll offset (one page forward)
-        let new_offset = (self.scroll_offset + self.visible_items).min(
-            self.emails.len().saturating_sub(self.visible_items)
-        );
+        let new_offset = (self.scroll_offset + self.visible_items)
+            .min(self.emails.len().saturating_sub(self.visible_items));
 
         // If we can scroll forward
         if new_offset != self.scroll_offset {
