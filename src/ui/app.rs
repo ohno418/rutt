@@ -200,6 +200,48 @@ impl App {
         self.scroll_offset = new_offset;
         self.list_state.select(Some(self.scroll_offset));
     }
+
+    /// Scrolls the window down by half a page (Ctrl-D in Vim).
+    pub fn half_page_forward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        let half_page = (self.visible_items / 2).max(1);
+        let current_selected = self.list_state.selected().unwrap_or(0);
+        let current_position_in_window = current_selected.saturating_sub(self.scroll_offset);
+
+        // Scroll the window down by half a page
+        let new_scroll_offset = (self.scroll_offset + half_page)
+            .min(self.emails.len().saturating_sub(self.visible_items));
+
+        // Try to keep cursor at the same relative position in the window
+        let new_selected =
+            (new_scroll_offset + current_position_in_window).min(self.emails.len() - 1);
+
+        self.scroll_offset = new_scroll_offset;
+        self.list_state.select(Some(new_selected));
+    }
+
+    /// Scrolls the window up by half a page (Ctrl-U in Vim).
+    pub fn half_page_backward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        let half_page = (self.visible_items / 2).max(1);
+        let current_selected = self.list_state.selected().unwrap_or(0);
+        let current_position_in_window = current_selected.saturating_sub(self.scroll_offset);
+
+        // Scroll the window up by half a page
+        let new_scroll_offset = self.scroll_offset.saturating_sub(half_page);
+
+        // Try to keep cursor at the same relative position in the window
+        let new_selected = new_scroll_offset + current_position_in_window;
+
+        self.scroll_offset = new_scroll_offset;
+        self.list_state.select(Some(new_selected));
+    }
 }
 
 #[cfg(test)]
@@ -501,5 +543,98 @@ mod tests {
         app.page_backward();
         assert_eq!(app.list_state.selected(), Some(0)); // First email
         assert_eq!(app.scroll_offset, 0); // No scrolling needed
+    }
+
+    #[test]
+    fn test_half_page_navigation() {
+        let emails: Vec<Email> = (0..30)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+                body: None,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(10); // Window shows 10 items, so half-page is 5
+
+        // Start at position 0 (cursor at top of window)
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Move cursor to middle of window first
+        app.next();
+        app.next();
+        app.next(); // Now at position 3
+        assert_eq!(app.list_state.selected(), Some(3));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Test half page forward (Ctrl-D) - should scroll window down by 5
+        app.half_page_forward();
+        assert_eq!(app.scroll_offset, 5); // Window scrolled down by 5
+        assert_eq!(app.list_state.selected(), Some(8)); // Cursor maintains relative position (3rd item in window)
+
+        // Test half page backward (Ctrl-U) - should scroll window up by 5
+        app.half_page_backward();
+        assert_eq!(app.scroll_offset, 0); // Window scrolled back up
+        assert_eq!(app.list_state.selected(), Some(3)); // Cursor back to original position
+
+        // Test at end of list - scroll near the end first
+        app.scroll_offset = 15; // Window shows items 15-24
+        app.list_state.select(Some(18)); // Cursor at 3rd position in window
+
+        // Half page forward at end - should scroll as much as possible
+        app.half_page_forward();
+        assert_eq!(app.scroll_offset, 20); // Max scroll for 30 items with 10 visible (30-10=20)
+        assert_eq!(app.list_state.selected(), Some(23)); // Cursor maintains relative position
+    }
+
+    #[test]
+    fn test_half_page_navigation_small_window() {
+        let emails: Vec<Email> = (0..10)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+                body: None,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(3); // Very small window, half-page = 1 (minimum)
+
+        // Start at position 0 (cursor at top of window)
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Move cursor to middle of small window
+        app.next(); // Now at position 1
+        assert_eq!(app.list_state.selected(), Some(1));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Half page forward should scroll window by 1
+        app.half_page_forward();
+        assert_eq!(app.scroll_offset, 1); // Window scrolled down by 1
+        assert_eq!(app.list_state.selected(), Some(2)); // Cursor maintains relative position (1st item in window)
+
+        // Half page backward should scroll window back
+        app.half_page_backward();
+        assert_eq!(app.scroll_offset, 0); // Window scrolled back
+        assert_eq!(app.list_state.selected(), Some(1)); // Cursor back to original position
     }
 }
