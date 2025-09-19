@@ -26,6 +26,7 @@ pub struct Email {
 }
 
 /// Gmail IMAP client for secure email access.
+#[derive(Debug)]
 pub struct GmailClient {
     session: Session<TlsStream<TcpStream>>,
 }

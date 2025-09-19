@@ -16,6 +16,7 @@ pub(crate) enum ViewMode {
 }
 
 /// Main application state containing emails and UI state.
+#[derive(Debug)]
 pub struct App {
     /// Vector of emails to display.
     pub emails: Vec<Email>,
