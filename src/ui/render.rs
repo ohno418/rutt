@@ -204,7 +204,13 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     ];
 
     // Add To field if present
-    if let Some(to) = &email.to {
+    if !email.to.is_empty() {
+        let to = email
+            .to
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         content.push(Line::from(vec![
             Span::styled(
                 "To: ",
