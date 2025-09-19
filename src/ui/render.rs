@@ -201,6 +201,19 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         ]),
     ];
 
+    // Add To field if present
+    if let Some(to) = &email.to {
+        metadata.push(Line::from(vec![
+            Span::styled(
+                "To: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(to),
+        ]));
+    }
+
     // Add Cc field if present
     if let Some(cc) = &email.cc {
         metadata.push(Line::from(vec![
