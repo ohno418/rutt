@@ -162,8 +162,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2),
-            Constraint::Length(9), // Headers section (expanded for Cc/Bcc)
-            Constraint::Min(5),    // Body section
+            Constraint::Min(5),
             Constraint::Length(1),
         ])
         .split(f.area());
@@ -179,8 +178,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     .alignment(Alignment::Center);
     f.render_widget(header, chunks[0]);
 
-    // Email metadata
-    let mut metadata = vec![
+    let mut content = vec![
         Line::from(vec![
             Span::styled(
                 "Date: ",
@@ -203,7 +201,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     // Add To field if present
     if let Some(to) = &email.to {
-        metadata.push(Line::from(vec![
+        content.push(Line::from(vec![
             Span::styled(
                 "To: ",
                 Style::default()
@@ -216,7 +214,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     // Add Cc field if present
     if let Some(cc) = &email.cc {
-        metadata.push(Line::from(vec![
+        content.push(Line::from(vec![
             Span::styled(
                 "Cc: ",
                 Style::default()
@@ -229,7 +227,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     // Add Bcc field if present
     if let Some(bcc) = &email.bcc {
-        metadata.push(Line::from(vec![
+        content.push(Line::from(vec![
             Span::styled(
                 "Bcc: ",
                 Style::default()
@@ -240,7 +238,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         ]));
     }
 
-    metadata.push(Line::from(vec![
+    content.push(Line::from(vec![
         Span::styled(
             "Subject: ",
             Style::default()
@@ -250,16 +248,10 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         Span::raw(&email.subject),
     ]));
 
-    let metadata_widget = Paragraph::new(metadata)
-        .block(
-            Block::default()
-                .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(Color::White)),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(metadata_widget, chunks[1]);
+    // Add empty line separator between headers and body
+    content.push(Line::from(""));
 
-    // Email body
+    // Add email body
     let body_text = email
         .body
         .as_ref()
@@ -269,11 +261,12 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .lines()
         .map(|line| Line::from(line.to_string()))
         .collect();
+    content.extend(body_lines);
 
-    let body_widget = Paragraph::new(body_lines)
+    let combined_widget = Paragraph::new(content)
         .wrap(Wrap { trim: true })
         .scroll((0, 0)); // Can be enhanced later for scrolling
-    f.render_widget(body_widget, chunks[2]);
+    f.render_widget(combined_widget, chunks[1]);
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
@@ -282,5 +275,5 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     ]))
     .style(Style::default().fg(Color::White))
     .alignment(Alignment::Center);
-    f.render_widget(footer, chunks[3]);
+    f.render_widget(footer, chunks[2]);
 }
