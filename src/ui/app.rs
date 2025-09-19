@@ -35,6 +35,10 @@ pub struct App {
     ///
     /// This is updated dynamically based on terminal size.
     pub visible_items: usize,
+
+    // For detail mode:
+    /// Scroll offset for detail view content.
+    pub detail_scroll_offset: u16,
 }
 
 impl App {
@@ -52,6 +56,7 @@ impl App {
             mode: ViewMode::List,
             scroll_offset: 0,
             visible_items: 10, // Will be updated when rendering.
+            detail_scroll_offset: 0,
         }
     }
 
@@ -126,6 +131,7 @@ impl App {
     /// Returns to the email list view from detail view.
     pub fn back_to_list(&mut self) {
         self.mode = ViewMode::List;
+        self.detail_scroll_offset = 0; // Reset detail scroll when going back to list
     }
 
     /// Moves cursor to the top of the visible window.
@@ -290,6 +296,26 @@ impl App {
         if cursor_at_bottom && new_scroll_offset < current_selected && current_selected > 0 {
             self.list_state.select(Some(current_selected - 1));
         }
+    }
+
+    /// Scrolls detail view down by one line (j key).
+    pub fn detail_scroll_down(&mut self) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_add(1);
+    }
+
+    /// Scrolls detail view up by one line (k key).
+    pub fn detail_scroll_up(&mut self) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_sub(1);
+    }
+
+    /// Scrolls detail view down by one line (ctrl-e).
+    pub fn detail_line_forward(&mut self) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_add(1);
+    }
+
+    /// Scrolls detail view up by one line (ctrl-y).
+    pub fn detail_line_backward(&mut self) {
+        self.detail_scroll_offset = self.detail_scroll_offset.saturating_sub(1);
     }
 }
 

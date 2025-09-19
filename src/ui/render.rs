@@ -263,13 +263,19 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .collect();
     content.extend(body_lines);
 
-    let combined_widget = Paragraph::new(content)
+    let widget = Paragraph::new(content)
         .wrap(Wrap { trim: true })
-        .scroll((0, 0)); // Can be enhanced later for scrolling
-    f.render_widget(combined_widget, chunks[1]);
+        .scroll((app.detail_scroll_offset, 0));
+    f.render_widget(widget, chunks[1]);
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
+        Span::raw("j/k/↓/↑"),
+        Span::styled(":scroll", Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
+        Span::raw("^e/^y"),
+        Span::styled(":line scroll", Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
         Span::raw("q/Esc"),
         Span::styled(":back", Style::default().fg(Color::DarkGray)),
     ]))
