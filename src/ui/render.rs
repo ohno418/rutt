@@ -187,7 +187,10 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(email.date.format("%Y/%m/%d %H:%M").to_string()),
+            Span::styled(
+                email.date.format("%Y/%m/%d %H:%M").to_string(),
+                Style::default().fg(Color::Yellow),
+            ),
         ]),
         Line::from(vec![
             Span::styled(
@@ -196,7 +199,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(email.from.to_string()),
+            Span::styled(email.from.to_string(), Style::default().fg(Color::Yellow)),
         ]),
     ];
 
@@ -209,7 +212,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(to),
+            Span::styled(to, Style::default().fg(Color::Green)),
         ]));
     }
 
@@ -222,7 +225,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(cc),
+            Span::styled(cc, Style::default().fg(Color::Green)),
         ]));
     }
 
@@ -235,7 +238,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(bcc),
+            Span::styled(bcc, Style::default().fg(Color::Green)),
         ]));
     }
 
@@ -246,7 +249,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(&email.subject),
+        Span::styled(&email.subject, Style::default().fg(Color::Yellow)),
     ]));
 
     // Add empty line separator between headers and body
