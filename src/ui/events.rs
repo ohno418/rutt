@@ -31,6 +31,9 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<(
                         KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             app.previous()
                         }
+                        KeyCode::Char('H') => app.goto_page_top(),
+                        KeyCode::Char('M') => app.goto_page_middle(),
+                        KeyCode::Char('L') => app.goto_page_bottom(),
                         KeyCode::Enter => app.view_email(),
                         _ => {}
                     },

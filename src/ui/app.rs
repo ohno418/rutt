@@ -121,6 +121,44 @@ impl App {
     pub fn back_to_list(&mut self) {
         self.mode = ViewMode::List;
     }
+
+    /// Moves cursor to the top of the visible window.
+    pub fn goto_page_top(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        // Move to the first visible item in the current window
+        self.list_state.select(Some(self.scroll_offset));
+    }
+
+    /// Moves cursor to the middle of the visible window.
+    pub fn goto_page_middle(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        // Calculate the middle of the visible window
+        let window_end = (self.scroll_offset + self.visible_items).min(self.emails.len());
+        let window_size = window_end - self.scroll_offset;
+        let middle_offset = window_size / 2;
+        let middle_index = self.scroll_offset + middle_offset;
+
+        // Ensure we don't go past the last email
+        let target_index = middle_index.min(self.emails.len() - 1);
+        self.list_state.select(Some(target_index));
+    }
+
+    /// Moves cursor to the bottom of the visible window.
+    pub fn goto_page_bottom(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        // Move to the last visible item in the current window
+        let last_visible = (self.scroll_offset + self.visible_items - 1).min(self.emails.len() - 1);
+        self.list_state.select(Some(last_visible));
+    }
 }
 
 #[cfg(test)]
@@ -247,5 +285,86 @@ mod tests {
         // Go back to list
         app.back_to_list();
         assert!(matches!(app.mode, ViewMode::List));
+    }
+
+    #[test]
+    fn test_vim_navigation() {
+        let emails: Vec<Email> = (0..20)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(5); // Window shows 5 items
+
+        // Start at position 0 with scroll_offset 0
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Move down to trigger scrolling
+        for _ in 0..7 {
+            app.next();
+        }
+        assert_eq!(app.list_state.selected(), Some(7));
+        assert_eq!(app.scroll_offset, 3); // Window scrolled to show items 3-7
+
+        // Test goto_page_top (H key) - should go to top of visible window (item 3)
+        app.goto_page_top();
+        assert_eq!(app.list_state.selected(), Some(3)); // First visible item
+        assert_eq!(app.scroll_offset, 3); // Scroll doesn't change
+
+        // Test goto_page_bottom (L key) - should go to bottom of visible window (item 7)
+        app.goto_page_bottom();
+        assert_eq!(app.list_state.selected(), Some(7)); // Last visible item (3+5-1)
+        assert_eq!(app.scroll_offset, 3); // Scroll doesn't change
+
+        // Test goto_page_middle (M key) - should go to middle of visible window
+        app.goto_page_middle();
+        assert_eq!(app.list_state.selected(), Some(5)); // Middle of window (3 + 2)
+        assert_eq!(app.scroll_offset, 3); // Scroll doesn't change
+
+        // Test at end of list where window is partial
+        for _ in 0..14 {
+            app.next();
+        }
+        assert_eq!(app.list_state.selected(), Some(19)); // Last email
+        assert_eq!(app.scroll_offset, 15); // Window shows items 15-19
+
+        // Window shows items 15-19 (only 5 items visible)
+        app.goto_page_top();
+        assert_eq!(app.list_state.selected(), Some(15)); // Top of window
+
+        app.goto_page_bottom();
+        assert_eq!(app.list_state.selected(), Some(19)); // Bottom of window
+
+        app.goto_page_middle();
+        assert_eq!(app.list_state.selected(), Some(17)); // Middle of window (15 + 2)
+    }
+
+    #[test]
+    fn test_vim_navigation_empty_list() {
+        let emails = vec![];
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+
+        // These should not panic on empty list
+        app.goto_page_top();
+        app.goto_page_middle();
+        app.goto_page_bottom();
+        assert_eq!(app.list_state.selected(), None);
     }
 }
