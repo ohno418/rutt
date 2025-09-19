@@ -88,6 +88,12 @@ fn render_list(f: &mut Frame, app: &mut App) {
                 email.subject.clone()
             };
 
+            let subject_span = if email.is_read {
+                Span::raw(subject)
+            } else {
+                Span::styled(subject, Style::default().fg(Color::Yellow))
+            };
+
             let content = vec![Line::from(vec![
                 Span::raw("["),
                 status,
@@ -99,7 +105,7 @@ fn render_list(f: &mut Frame, app: &mut App) {
                 Span::raw(" │ "),
                 Span::styled(from, Style::default().fg(Color::Green)),
                 Span::raw(" │ "),
-                Span::raw(subject),
+                subject_span,
             ])];
 
             ListItem::new(content)
