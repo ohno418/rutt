@@ -23,6 +23,8 @@ pub struct Email {
     pub date: DateTime<Local>,
     /// Whether the email has been read.
     pub is_read: bool,
+    /// Email body content (lazily loaded).
+    pub body: Option<String>,
 }
 
 /// Gmail IMAP client for secure email access.
@@ -132,6 +134,7 @@ impl GmailClient {
                     from,
                     date,
                     is_read,
+                    body: None,
                 });
             }
         }
@@ -139,6 +142,30 @@ impl GmailClient {
         emails.sort_by(|a, b| b.date.cmp(&a.date));
 
         Ok(emails)
+    }
+
+    /// Fetches the body of a specific email by its UID.
+    pub fn fetch_email_body(&mut self, uid: u32) -> Result<String> {
+        self.session
+            .select("INBOX")
+            .context("Failed to select INBOX")?;
+
+        let uid_set = format!("{}", uid);
+        let messages = self
+            .session
+            .uid_fetch(&uid_set, "BODY[TEXT]")
+            .context("Failed to fetch message body")?;
+
+        if let Some(msg) = messages.iter().next() {
+            if let Some(body) = msg.text() {
+                let body_str = std::str::from_utf8(body)
+                    .unwrap_or("(Unable to decode message body)")
+                    .to_string();
+                return Ok(body_str);
+            }
+        }
+
+        Ok("(No body content)".to_string())
     }
 
     fn _logout(mut self) -> Result<()> {
@@ -185,12 +212,14 @@ mod tests {
             from: "test@example.com".to_string(),
             date,
             is_read: false,
+            body: None,
         };
 
         assert_eq!(email._uid, 123);
         assert_eq!(email.subject, "Test Subject");
         assert_eq!(email.from, "test@example.com");
         assert!(!email.is_read);
+        assert!(email.body.is_none());
     }
 
     #[test]
@@ -224,6 +253,7 @@ mod tests {
             from: "clone@test.com".to_string(),
             date: Local::now(),
             is_read: true,
+            body: Some("Test body".to_string()),
         };
 
         let cloned = email.clone();
@@ -231,5 +261,6 @@ mod tests {
         assert_eq!(cloned.subject, email.subject);
         assert_eq!(cloned.from, email.from);
         assert_eq!(cloned.is_read, email.is_read);
+        assert_eq!(cloned.body, email.body);
     }
 }

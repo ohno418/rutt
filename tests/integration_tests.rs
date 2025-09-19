@@ -11,6 +11,7 @@ fn test_email_sorting() {
             from: "a@test.com".to_string(),
             date: now - chrono::Duration::days(2),
             is_read: false,
+            body: None,
         },
         Email {
             _uid: 2,
@@ -18,6 +19,7 @@ fn test_email_sorting() {
             from: "b@test.com".to_string(),
             date: now - chrono::Duration::days(1),
             is_read: true,
+            body: None,
         },
         Email {
             _uid: 3,
@@ -25,6 +27,7 @@ fn test_email_sorting() {
             from: "c@test.com".to_string(),
             date: now,
             is_read: false,
+            body: None,
         },
     ];
 
@@ -44,6 +47,7 @@ fn test_email_list_creation() {
             from: "sender1@example.com".to_string(),
             date: Local::now(),
             is_read: false,
+            body: None,
         },
         Email {
             _uid: 101,
@@ -51,6 +55,7 @@ fn test_email_list_creation() {
             from: "sender2@example.com".to_string(),
             date: Local::now() - chrono::Duration::hours(1),
             is_read: true,
+            body: None,
         },
     ];
 
@@ -68,6 +73,7 @@ fn test_email_field_validation() {
         from: String::new(),
         date: Local::now(),
         is_read: false,
+        body: None,
     };
 
     assert_eq!(email.subject, "");
@@ -84,6 +90,7 @@ fn test_long_subject_handling() {
         from: "test@test.com".to_string(),
         date: Local::now(),
         is_read: false,
+        body: None,
     };
 
     assert_eq!(email.subject.len(), 100);

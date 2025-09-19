@@ -155,7 +155,8 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(5),
+            Constraint::Length(7),  // Headers section
+            Constraint::Min(5),      // Body section
             Constraint::Length(1),
         ])
         .split(f.area());
@@ -171,35 +172,8 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     .alignment(Alignment::Center);
     f.render_widget(header, chunks[0]);
 
-    // Email content
-    let status = if email.is_read { "Read" } else { "Unread" };
-    let status_color = if email.is_read {
-        Color::Gray
-    } else {
-        Color::Yellow
-    };
-
-    let content = vec![
-        Line::from(vec![
-            Span::styled(
-                "From: ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(&email.from),
-        ]),
-        Line::default(),
-        Line::from(vec![
-            Span::styled(
-                "Subject: ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(&email.subject),
-        ]),
-        Line::default(),
+    // Email metadata
+    let metadata = vec![
         Line::from(vec![
             Span::styled(
                 "Date: ",
@@ -209,26 +183,45 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
             ),
             Span::raw(email.date.format("%Y/%m/%d %H:%M").to_string()),
         ]),
-        Line::default(),
         Line::from(vec![
             Span::styled(
-                "Status: ",
+                "From: ",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(status, Style::default().fg(status_color)),
+            Span::raw(&email.from),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Subject: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(&email.subject),
         ]),
     ];
 
-    let details = Paragraph::new(content)
+    let metadata_widget = Paragraph::new(metadata)
         .block(
             Block::default()
-                .borders(Borders::ALL)
+                .borders(Borders::BOTTOM)
                 .border_style(Style::default().fg(Color::White)),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(details, chunks[1]);
+        );
+    f.render_widget(metadata_widget, chunks[1]);
+
+    // Email body
+    let body_text = email.body.as_ref().unwrap_or(&"Loading...".to_string()).clone();
+    let body_lines: Vec<Line> = body_text
+        .lines()
+        .map(|line| Line::from(line.to_string()))
+        .collect();
+
+    let body_widget = Paragraph::new(body_lines)
+        .wrap(Wrap { trim: true })
+        .scroll((0, 0));  // Can be enhanced later for scrolling
+    f.render_widget(body_widget, chunks[2]);
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
@@ -237,5 +230,5 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     ]))
     .style(Style::default().fg(Color::White))
     .alignment(Alignment::Center);
-    f.render_widget(footer, chunks[2]);
+    f.render_widget(footer, chunks[3]);
 }

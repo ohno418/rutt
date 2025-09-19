@@ -23,7 +23,7 @@ pub struct App {
     /// Current selection state for the email list.
     pub list_state: ListState,
     /// Gmail client for potential future operations.
-    pub _client: GmailClient,
+    pub client: GmailClient,
     /// Current view mode (list or detail).
     pub(crate) mode: ViewMode,
 
@@ -48,7 +48,7 @@ impl App {
         App {
             emails,
             list_state,
-            _client: client,
+            client,
             mode: ViewMode::List,
             scroll_offset: 0,
             visible_items: 10, // Will be updated when rendering.
@@ -112,6 +112,12 @@ impl App {
     pub fn view_email(&mut self) {
         if let Some(selected) = self.list_state.selected() {
             if selected < self.emails.len() {
+                // Fetch email body if not already loaded
+                if self.emails[selected].body.is_none() {
+                    if let Ok(body) = self.client.fetch_email_body(self.emails[selected]._uid) {
+                        self.emails[selected].body = Some(body);
+                    }
+                }
                 self.mode = ViewMode::Detail(selected);
             }
         }
@@ -211,6 +217,7 @@ mod tests {
                 from: "test1@test.com".to_string(),
                 date: Local::now(),
                 is_read: false,
+                body: None,
             },
             Email {
                 _uid: 2,
@@ -218,6 +225,7 @@ mod tests {
                 from: "test2@test.com".to_string(),
                 date: Local::now(),
                 is_read: true,
+                body: None,
             },
         ];
 
@@ -261,6 +269,7 @@ mod tests {
                 from: format!("test{}@test.com", i + 1),
                 date: Local::now(),
                 is_read: false,
+                body: None,
             })
             .collect();
 
@@ -302,6 +311,7 @@ mod tests {
             from: "test@test.com".to_string(),
             date: Local::now(),
             is_read: false,
+            body: None,
         }];
 
         let client = GmailClient::connect("dummy", "dummy");
@@ -332,6 +342,7 @@ mod tests {
                 from: format!("test{}@test.com", i + 1),
                 date: Local::now(),
                 is_read: false,
+                body: None,
             })
             .collect();
 
@@ -413,6 +424,7 @@ mod tests {
                 from: format!("test{}@test.com", i + 1),
                 date: Local::now(),
                 is_read: false,
+                body: None,
             })
             .collect();
 
@@ -469,6 +481,7 @@ mod tests {
                 from: format!("test{}@test.com", i + 1),
                 date: Local::now(),
                 is_read: false,
+                body: None,
             })
             .collect();
 
