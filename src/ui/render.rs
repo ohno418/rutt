@@ -162,7 +162,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2),
-            Constraint::Length(7), // Headers section
+            Constraint::Length(9), // Headers section (expanded for Cc/Bcc)
             Constraint::Min(5),    // Body section
             Constraint::Length(1),
         ])
@@ -180,7 +180,7 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     f.render_widget(header, chunks[0]);
 
     // Email metadata
-    let metadata = vec![
+    let mut metadata = vec![
         Line::from(vec![
             Span::styled(
                 "Date: ",
@@ -199,22 +199,51 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
             ),
             Span::raw(&email.from),
         ]),
-        Line::from(vec![
+    ];
+
+    // Add Cc field if present
+    if let Some(cc) = &email.cc {
+        metadata.push(Line::from(vec![
             Span::styled(
-                "Subject: ",
+                "Cc: ",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(&email.subject),
-        ]),
-    ];
+            Span::raw(cc),
+        ]));
+    }
 
-    let metadata_widget = Paragraph::new(metadata).block(
-        Block::default()
-            .borders(Borders::BOTTOM)
-            .border_style(Style::default().fg(Color::White)),
-    );
+    // Add Bcc field if present
+    if let Some(bcc) = &email.bcc {
+        metadata.push(Line::from(vec![
+            Span::styled(
+                "Bcc: ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(bcc),
+        ]));
+    }
+
+    metadata.push(Line::from(vec![
+        Span::styled(
+            "Subject: ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(&email.subject),
+    ]));
+
+    let metadata_widget = Paragraph::new(metadata)
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(Color::White)),
+        )
+        .wrap(Wrap { trim: true });
     f.render_widget(metadata_widget, chunks[1]);
 
     // Email body

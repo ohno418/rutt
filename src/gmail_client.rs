@@ -19,6 +19,10 @@ pub struct Email {
     pub subject: String,
     /// Sender's name or email address.
     pub from: String,
+    /// Carbon copy recipients.
+    pub cc: Option<String>,
+    /// Blind carbon copy recipients.
+    pub bcc: Option<String>,
     /// Date and time the email was sent.
     pub date: DateTime<Local>,
     /// Whether the email has been read.
@@ -122,6 +126,72 @@ impl GmailClient {
                     })
                     .unwrap_or_else(|| "(unknown)".to_string());
 
+                let cc = envelope
+                    .cc
+                    .as_ref()
+                    .map(|addrs| {
+                        addrs
+                            .iter()
+                            .map(|addr| {
+                                let name = addr
+                                    .name
+                                    .as_ref()
+                                    .and_then(|n| std::str::from_utf8(n).ok())
+                                    .unwrap_or("");
+                                let mailbox = addr
+                                    .mailbox
+                                    .as_ref()
+                                    .and_then(|m| std::str::from_utf8(m).ok())
+                                    .unwrap_or("");
+                                let host = addr
+                                    .host
+                                    .as_ref()
+                                    .and_then(|h| std::str::from_utf8(h).ok())
+                                    .unwrap_or("");
+
+                                if !name.is_empty() {
+                                    name.to_string()
+                                } else {
+                                    format!("{}@{}", mailbox, host)
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    });
+
+                let bcc = envelope
+                    .bcc
+                    .as_ref()
+                    .map(|addrs| {
+                        addrs
+                            .iter()
+                            .map(|addr| {
+                                let name = addr
+                                    .name
+                                    .as_ref()
+                                    .and_then(|n| std::str::from_utf8(n).ok())
+                                    .unwrap_or("");
+                                let mailbox = addr
+                                    .mailbox
+                                    .as_ref()
+                                    .and_then(|m| std::str::from_utf8(m).ok())
+                                    .unwrap_or("");
+                                let host = addr
+                                    .host
+                                    .as_ref()
+                                    .and_then(|h| std::str::from_utf8(h).ok())
+                                    .unwrap_or("");
+
+                                if !name.is_empty() {
+                                    name.to_string()
+                                } else {
+                                    format!("{}@{}", mailbox, host)
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    });
+
                 let date = if let Some(header) = msg.header() {
                     parse_date_from_header(header).unwrap_or_else(|| Local::now())
                 } else {
@@ -132,6 +202,8 @@ impl GmailClient {
                     _uid,
                     subject,
                     from,
+                    cc,
+                    bcc,
                     date,
                     is_read,
                     body: None,
@@ -210,6 +282,8 @@ mod tests {
             _uid: 123,
             subject: "Test Subject".to_string(),
             from: "test@example.com".to_string(),
+            cc: Some("cc@example.com".to_string()),
+            bcc: None,
             date,
             is_read: false,
             body: None,
@@ -218,6 +292,8 @@ mod tests {
         assert_eq!(email._uid, 123);
         assert_eq!(email.subject, "Test Subject");
         assert_eq!(email.from, "test@example.com");
+        assert_eq!(email.cc, Some("cc@example.com".to_string()));
+        assert_eq!(email.bcc, None);
         assert!(!email.is_read);
         assert!(email.body.is_none());
     }
@@ -251,6 +327,8 @@ mod tests {
             _uid: 456,
             subject: "Clone Test".to_string(),
             from: "clone@test.com".to_string(),
+            cc: Some("cc@test.com".to_string()),
+            bcc: Some("bcc@test.com".to_string()),
             date: Local::now(),
             is_read: true,
             body: Some("Test body".to_string()),
@@ -260,6 +338,8 @@ mod tests {
         assert_eq!(cloned._uid, email._uid);
         assert_eq!(cloned.subject, email.subject);
         assert_eq!(cloned.from, email.from);
+        assert_eq!(cloned.cc, email.cc);
+        assert_eq!(cloned.bcc, email.bcc);
         assert_eq!(cloned.is_read, email.is_read);
         assert_eq!(cloned.body, email.body);
     }
