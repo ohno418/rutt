@@ -131,7 +131,9 @@ impl App {
     /// Returns to the email list view from detail view.
     pub fn back_to_list(&mut self) {
         self.mode = ViewMode::List;
-        self.detail_scroll_offset = 0; // Reset detail scroll when going back to list
+
+        // Reset detail scroll when going back to list.
+        self.detail_scroll_offset = 0;
     }
 
     /// Moves cursor to the top of the visible window.
@@ -140,7 +142,7 @@ impl App {
             return;
         }
 
-        // Move to the first visible item in the current window
+        // Move to the first visible item in the current window.
         self.list_state.select(Some(self.scroll_offset));
     }
 
