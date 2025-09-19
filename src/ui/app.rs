@@ -255,13 +255,16 @@ impl App {
         let cursor_at_top = current_selected == self.scroll_offset;
 
         // Scroll the window down by one line
-        let new_scroll_offset = (self.scroll_offset + 1)
-            .min(self.emails.len().saturating_sub(self.visible_items));
+        let new_scroll_offset =
+            (self.scroll_offset + 1).min(self.emails.len().saturating_sub(self.visible_items));
 
         self.scroll_offset = new_scroll_offset;
 
         // If cursor was at top and window actually scrolled, move cursor down to stay visible
-        if cursor_at_top && new_scroll_offset > current_selected && current_selected < self.emails.len() - 1 {
+        if cursor_at_top
+            && new_scroll_offset > current_selected
+            && current_selected < self.emails.len() - 1
+        {
             self.list_state.select(Some(current_selected + 1));
         }
     }
@@ -275,7 +278,8 @@ impl App {
         let current_selected = self.list_state.selected().unwrap_or(0);
 
         // Check if cursor is at the bottom of the visible window
-        let cursor_at_bottom = current_selected == (self.scroll_offset + self.visible_items - 1).min(self.emails.len() - 1);
+        let cursor_at_bottom = current_selected
+            == (self.scroll_offset + self.visible_items - 1).min(self.emails.len() - 1);
 
         // Scroll the window up by one line
         let new_scroll_offset = self.scroll_offset.saturating_sub(1);
