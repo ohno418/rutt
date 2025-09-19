@@ -8,14 +8,14 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 
 use crate::ui::app::{App, ViewMode};
 use crate::utils::format_date;
 
 /// Main UI rendering function that dispatches to appropriate view.
-pub(crate) fn ui(f: &mut Frame, app: &App) {
+pub(crate) fn ui(f: &mut Frame, app: &mut App) {
     match app.mode {
         ViewMode::List => render_list(f, app),
         ViewMode::Detail(idx) => render_detail(f, app, idx),
@@ -23,7 +23,7 @@ pub(crate) fn ui(f: &mut Frame, app: &App) {
 }
 
 /// Renders the email list view with header and footer.
-fn render_list(f: &mut Frame, app: &App) {
+fn render_list(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -51,10 +51,16 @@ fn render_list(f: &mut Frame, app: &App) {
     .alignment(Alignment::Center);
     f.render_widget(header, chunks[0]);
 
-    // Email list
-    let items: Vec<ListItem> = app
-        .emails
+    // Update visible items count based on list area height.
+    app.set_visible_items(chunks[1].height as usize);
+
+    // Email list - only show items in the visible window.
+    let visible_emails = app.emails
         .iter()
+        .skip(app.scroll_offset)
+        .take(app.visible_items);
+
+    let items: Vec<ListItem> = visible_emails
         .map(|email| {
             let status = if email.is_read {
                 Span::styled("R", Style::default().fg(Color::Gray))
@@ -108,7 +114,15 @@ fn render_list(f: &mut Frame, app: &App) {
         )
         .highlight_symbol("> ");
 
-    f.render_stateful_widget(emails, chunks[1], &mut app.list_state.clone());
+    // Create a temporary list state for rendering with relative positioning.
+    let mut render_state = ListState::default();
+    if let Some(selected) = app.list_state.selected() {
+        if selected >= app.scroll_offset && selected < app.scroll_offset + app.visible_items {
+            render_state.select(Some(selected - app.scroll_offset));
+        }
+    }
+
+    f.render_stateful_widget(emails, chunks[1], &mut render_state);
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
