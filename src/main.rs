@@ -12,8 +12,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 
-use rutt::{Config, GmailClient, App, run_app};
-
+use rutt::{App, Config, GmailClient, run_app};
 
 fn main() -> Result<()> {
     let config = Config::load_default().context("Failed to load config.toml")?;

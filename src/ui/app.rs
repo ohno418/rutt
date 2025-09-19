@@ -3,8 +3,8 @@
 //! Handles email list state, view modes, and user navigation between list and
 //! detail views.
 
-use ratatui::widgets::ListState;
 use crate::gmail_client::{Email, GmailClient};
+use ratatui::widgets::ListState;
 
 #[derive(Debug, Clone)]
 pub enum ViewMode {
