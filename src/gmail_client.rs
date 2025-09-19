@@ -59,10 +59,6 @@ impl GmailClient {
 
     /// Fetches the most recent emails from the INBOX.
     pub fn fetch_emails(&mut self, limit: u32) -> Result<Vec<Email>> {
-        self.session
-            .select("INBOX")
-            .context("Failed to select INBOX")?;
-
         // Get the number of messages in the mailbox
         let mailbox = self
             .session
