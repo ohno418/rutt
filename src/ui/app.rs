@@ -8,7 +8,7 @@ use ratatui::widgets::ListState;
 
 /// Application view modes for different UI states.
 #[derive(Debug, Clone)]
-pub enum ViewMode {
+pub(crate) enum ViewMode {
     /// Email list view showing all emails.
     List,
     /// Email detail view showing specific email at index.
@@ -24,7 +24,7 @@ pub struct App {
     /// Gmail client for potential future operations.
     pub _client: GmailClient,
     /// Current view mode (list or detail).
-    pub mode: ViewMode,
+    pub(crate) mode: ViewMode,
 }
 
 impl App {

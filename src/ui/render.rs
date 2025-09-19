@@ -15,7 +15,7 @@ use crate::ui::app::{App, ViewMode};
 use crate::utils::format_date;
 
 /// Main UI rendering function that dispatches to appropriate view.
-pub fn ui(f: &mut Frame, app: &App) {
+pub(crate) fn ui(f: &mut Frame, app: &App) {
     match app.mode {
         ViewMode::List => render_list(f, app),
         ViewMode::Detail(idx) => render_detail(f, app, idx),
@@ -23,7 +23,7 @@ pub fn ui(f: &mut Frame, app: &App) {
 }
 
 /// Renders the email list view with header and footer.
-pub fn render_list(f: &mut Frame, app: &App) {
+fn render_list(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -130,7 +130,7 @@ pub fn render_list(f: &mut Frame, app: &App) {
 }
 
 /// Renders the email detail view for a specific email.
-pub fn render_detail(f: &mut Frame, app: &App, idx: usize) {
+fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     if idx >= app.emails.len() {
         return;
     }

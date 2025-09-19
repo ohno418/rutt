@@ -140,7 +140,7 @@ impl GmailClient {
         Ok(emails)
     }
 
-    pub fn _logout(mut self) -> Result<()> {
+    fn _logout(mut self) -> Result<()> {
         self.session.logout().context("Failed to logout")?;
         Ok(())
     }

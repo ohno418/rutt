@@ -3,12 +3,11 @@
 //! This crate provides a simple TUI application for reading Gmail messages via
 //! IMAP connection with SSL/TLS support.
 
-pub mod config;
-pub mod gmail_client;
-pub mod ui;
-pub mod utils;
+mod config;
+mod gmail_client;
+mod ui;
+mod utils;
 
 pub use config::Config;
 pub use gmail_client::{Email, GmailClient};
-pub use ui::{App, ViewMode, run_app};
-pub use utils::format_date;
+pub use ui::{App, run_app};

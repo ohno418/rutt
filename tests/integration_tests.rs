@@ -1,5 +1,5 @@
 use chrono::Local;
-use rutt::gmail_client::Email;
+use rutt::Email;
 
 #[test]
 fn test_email_sorting() {
