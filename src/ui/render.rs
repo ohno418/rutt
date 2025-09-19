@@ -223,7 +223,13 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
     }
 
     // Add Cc field if present
-    if let Some(cc) = &email.cc {
+    if !email.cc.is_empty() {
+        let cc = email
+            .cc
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         content.push(Line::from(vec![
             Span::styled(
                 "Cc: ",
