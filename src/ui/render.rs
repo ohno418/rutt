@@ -133,10 +133,10 @@ fn render_list(f: &mut Frame, app: &mut App) {
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
-        Span::raw("j/^n/↓"),
+        Span::raw("j/↓"),
         Span::styled(":down", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
-        Span::raw("k/^p/↑"),
+        Span::raw("k/↑"),
         Span::styled(":up", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
         Span::raw("Enter"),
@@ -270,11 +270,11 @@ fn render_detail(f: &mut Frame, app: &App, idx: usize) {
 
     // Footer
     let footer = Paragraph::new(Line::from(vec![
-        Span::raw("j/k/↓/↑"),
-        Span::styled(":scroll", Style::default().fg(Color::DarkGray)),
+        Span::raw("j/↓"),
+        Span::styled(":down", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
-        Span::raw("^e/^y"),
-        Span::styled(":line scroll", Style::default().fg(Color::DarkGray)),
+        Span::raw("k/↑"),
+        Span::styled(":up", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
         Span::raw("q/Esc"),
         Span::styled(":back", Style::default().fg(Color::DarkGray)),

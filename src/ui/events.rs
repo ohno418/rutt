@@ -58,10 +58,14 @@ pub fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<(
                     ViewMode::Detail(_) => match key.code {
                         KeyCode::Char('j') | KeyCode::Down => app.detail_scroll_down(),
                         KeyCode::Char('k') | KeyCode::Up => app.detail_scroll_up(),
-                        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('n') | KeyCode::Char('e')
+                            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             app.detail_line_forward()
                         }
-                        KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('p') | KeyCode::Char('y')
+                            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             app.detail_line_backward()
                         }
                         KeyCode::Char('q') | KeyCode::Esc => app.back_to_list(),
