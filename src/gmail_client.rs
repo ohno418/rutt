@@ -146,6 +146,12 @@ impl GmailClient {
             let is_read = msg.flags().iter().any(|f| f == &imap::types::Flag::Seen);
 
             if let Some(envelope) = msg.envelope() {
+                let date = if let Some(header) = msg.header() {
+                    parse_date_from_header(header).unwrap_or_else(|| Local::now())
+                } else {
+                    Local::now()
+                };
+
                 let subject = envelope
                     .subject
                     .as_ref()
@@ -185,6 +191,40 @@ impl GmailClient {
                         name: None,
                         email: None,
                     });
+
+                let to = envelope
+                    .to
+                    .as_ref()
+                    .map(|addrs| {
+                        addrs
+                            .iter()
+                            .map(|addr| {
+                                let name = addr
+                                    .name
+                                    .as_ref()
+                                    .and_then(|n| std::str::from_utf8(n).ok())
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| s.to_string());
+                                let mailbox = addr
+                                    .mailbox
+                                    .as_ref()
+                                    .and_then(|m| std::str::from_utf8(m).ok())
+                                    .unwrap_or("");
+                                let host = addr
+                                    .host
+                                    .as_ref()
+                                    .and_then(|h| std::str::from_utf8(h).ok())
+                                    .unwrap_or("");
+                                let email = if !mailbox.is_empty() && !host.is_empty() {
+                                    Some(format!("{}@{}", mailbox, host))
+                                } else {
+                                    None
+                                };
+                                NameAddr { name, email }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(Vec::new);
 
                 let cc = envelope.cc.as_ref().map(|addrs| {
                     addrs
@@ -245,46 +285,6 @@ impl GmailClient {
                         .collect::<Vec<_>>()
                         .join(", ")
                 });
-
-                let to = envelope
-                    .to
-                    .as_ref()
-                    .map(|addrs| {
-                        addrs
-                            .iter()
-                            .map(|addr| {
-                                let name = addr
-                                    .name
-                                    .as_ref()
-                                    .and_then(|n| std::str::from_utf8(n).ok())
-                                    .filter(|s| !s.is_empty())
-                                    .map(|s| s.to_string());
-                                let mailbox = addr
-                                    .mailbox
-                                    .as_ref()
-                                    .and_then(|m| std::str::from_utf8(m).ok())
-                                    .unwrap_or("");
-                                let host = addr
-                                    .host
-                                    .as_ref()
-                                    .and_then(|h| std::str::from_utf8(h).ok())
-                                    .unwrap_or("");
-                                let email = if !mailbox.is_empty() && !host.is_empty() {
-                                    Some(format!("{}@{}", mailbox, host))
-                                } else {
-                                    None
-                                };
-                                NameAddr { name, email }
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_else(Vec::new);
-
-                let date = if let Some(header) = msg.header() {
-                    parse_date_from_header(header).unwrap_or_else(|| Local::now())
-                } else {
-                    Local::now()
-                };
 
                 emails.push(Email {
                     _uid,
