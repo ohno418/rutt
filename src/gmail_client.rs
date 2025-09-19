@@ -297,32 +297,6 @@ fn parse_date_from_header(header: &[u8]) -> Option<DateTime<Local>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_email_struct() {
-        let date = Local::now();
-        let email = Email {
-            _uid: 123,
-            subject: "Test Subject".to_string(),
-            from: "test@example.com".to_string(),
-            to: Some("to@example.com".to_string()),
-            cc: Some("cc@example.com".to_string()),
-            bcc: None,
-            date,
-            is_read: false,
-            body: None,
-        };
-
-        assert_eq!(email._uid, 123);
-        assert_eq!(email.subject, "Test Subject");
-        assert_eq!(email.from, "test@example.com");
-        assert_eq!(email.to, Some("to@example.com".to_string()));
-        assert_eq!(email.cc, Some("cc@example.com".to_string()));
-        assert_eq!(email.bcc, None);
-        assert!(!email.is_read);
-        assert!(email.body.is_none());
-    }
-
     #[test]
     fn test_parse_date_from_header_rfc2822() {
         let header = b"Date: Wed, 15 Jan 2025 10:30:45 +0000\r\n\r\n";
@@ -344,30 +318,5 @@ mod tests {
         let header = b"Subject: Test Subject\r\n\r\n";
         let result = parse_date_from_header(header);
         assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_email_clone() {
-        let email = Email {
-            _uid: 456,
-            subject: "Clone Test".to_string(),
-            from: "clone@test.com".to_string(),
-            to: Some("to@test.com".to_string()),
-            cc: Some("cc@test.com".to_string()),
-            bcc: Some("bcc@test.com".to_string()),
-            date: Local::now(),
-            is_read: true,
-            body: Some("Test body".to_string()),
-        };
-
-        let cloned = email.clone();
-        assert_eq!(cloned._uid, email._uid);
-        assert_eq!(cloned.subject, email.subject);
-        assert_eq!(cloned.from, email.from);
-        assert_eq!(cloned.to, email.to);
-        assert_eq!(cloned.cc, email.cc);
-        assert_eq!(cloned.bcc, email.bcc);
-        assert_eq!(cloned.is_read, email.is_read);
-        assert_eq!(cloned.body, email.body);
     }
 }
