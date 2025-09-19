@@ -162,8 +162,8 @@ fn render_list(f: &mut Frame, app: &App) {
                 format!("{:<25}", email.from)
             };
 
-            let subject = if email.subject.len() > 50 {
-                format!("{}...", &email.subject[..47])
+            let subject = if email.subject.len() > 100 {
+                format!("{}...", &email.subject[..97])
             } else {
                 email.subject.clone()
             };
