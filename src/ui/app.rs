@@ -55,7 +55,7 @@ impl App {
             client,
             mode: ViewMode::List,
             scroll_offset: 0,
-            visible_items: 10, // Will be updated when rendering.
+            visible_items: 0, // Will be updated when rendering.
             detail_scroll_offset: 0,
         }
     }
