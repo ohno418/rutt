@@ -201,7 +201,7 @@ impl App {
         self.list_state.select(Some(self.scroll_offset));
     }
 
-    /// Scrolls the window down by half a page (Ctrl-D in Vim).
+    /// Scrolls the window down by half a page.
     pub fn half_page_forward(&mut self) {
         if self.emails.is_empty() {
             return;
@@ -223,7 +223,7 @@ impl App {
         self.list_state.select(Some(new_selected));
     }
 
-    /// Scrolls the window up by half a page (Ctrl-U in Vim).
+    /// Scrolls the window up by half a page.
     pub fn half_page_backward(&mut self) {
         if self.emails.is_empty() {
             return;
@@ -241,6 +241,51 @@ impl App {
 
         self.scroll_offset = new_scroll_offset;
         self.list_state.select(Some(new_selected));
+    }
+
+    /// Scrolls the window down by one line.
+    pub fn line_forward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        let current_selected = self.list_state.selected().unwrap_or(0);
+
+        // Check if cursor is at the top of the visible window
+        let cursor_at_top = current_selected == self.scroll_offset;
+
+        // Scroll the window down by one line
+        let new_scroll_offset = (self.scroll_offset + 1)
+            .min(self.emails.len().saturating_sub(self.visible_items));
+
+        self.scroll_offset = new_scroll_offset;
+
+        // If cursor was at top and window actually scrolled, move cursor down to stay visible
+        if cursor_at_top && new_scroll_offset > current_selected && current_selected < self.emails.len() - 1 {
+            self.list_state.select(Some(current_selected + 1));
+        }
+    }
+
+    /// Scrolls the window up by one line.
+    pub fn line_backward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        let current_selected = self.list_state.selected().unwrap_or(0);
+
+        // Check if cursor is at the bottom of the visible window
+        let cursor_at_bottom = current_selected == (self.scroll_offset + self.visible_items - 1).min(self.emails.len() - 1);
+
+        // Scroll the window up by one line
+        let new_scroll_offset = self.scroll_offset.saturating_sub(1);
+
+        self.scroll_offset = new_scroll_offset;
+
+        // If cursor was at bottom and window actually scrolled, move cursor up to stay visible
+        if cursor_at_bottom && new_scroll_offset < current_selected && current_selected > 0 {
+            self.list_state.select(Some(current_selected - 1));
+        }
     }
 }
 
@@ -636,5 +681,105 @@ mod tests {
         app.half_page_backward();
         assert_eq!(app.scroll_offset, 0); // Window scrolled back
         assert_eq!(app.list_state.selected(), Some(1)); // Cursor back to original position
+    }
+
+    #[test]
+    fn test_line_scrolling() {
+        let emails: Vec<Email> = (0..20)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+                body: None,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(5); // Window shows 5 items
+
+        // Test with cursor in middle - should stay fixed
+        app.list_state.select(Some(2));
+        assert_eq!(app.list_state.selected(), Some(2));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Line forward with cursor in middle - cursor stays fixed
+        app.line_forward();
+        assert_eq!(app.list_state.selected(), Some(2)); // Cursor stays at same position
+        assert_eq!(app.scroll_offset, 1); // Window scrolled down by 1
+
+        // Test with cursor at top - should move down when scrolling
+        app.scroll_offset = 0;
+        app.list_state.select(Some(0)); // Cursor at top of window
+
+        app.line_forward();
+        assert_eq!(app.list_state.selected(), Some(1)); // Cursor moved down to stay visible
+        assert_eq!(app.scroll_offset, 1); // Window scrolled down by 1
+
+        // Test with cursor at bottom - should move up when scrolling backward
+        app.scroll_offset = 5;
+        app.list_state.select(Some(9)); // Cursor at bottom of window (scroll_offset 5 + visible_items 5 - 1 = 9)
+
+        app.line_backward();
+        assert_eq!(app.list_state.selected(), Some(8)); // Cursor moved up to stay visible
+        assert_eq!(app.scroll_offset, 4); // Window scrolled up by 1
+    }
+
+    #[test]
+    fn test_line_scrolling_edge_cases() {
+        let emails: Vec<Email> = (0..10)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+                body: None,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(5); // Window shows 5 items, list has 10 items
+
+        // Test at the beginning - line backward should do nothing when scroll is at 0
+        app.list_state.select(Some(2)); // Set cursor to position 2
+        assert_eq!(app.scroll_offset, 0);
+        app.line_backward();
+        assert_eq!(app.list_state.selected(), Some(2)); // Cursor stays at position 2
+        assert_eq!(app.scroll_offset, 0); // Scroll should stay at 0 (can't go negative)
+
+        // Test at the end - line forward should do nothing when at max scroll
+        app.scroll_offset = 5; // Max scroll for 10 items with 5 visible (10-5=5)
+        app.line_forward();
+        assert_eq!(app.list_state.selected(), Some(2)); // Cursor stays at position 2
+        assert_eq!(app.scroll_offset, 5); // Scroll should stay at max
+    }
+
+    #[test]
+    fn test_line_scrolling_empty_list() {
+        let emails = vec![];
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+
+        // These should not panic on empty list
+        app.line_forward();
+        app.line_backward();
+        assert_eq!(app.list_state.selected(), None);
+        assert_eq!(app.scroll_offset, 0);
     }
 }
