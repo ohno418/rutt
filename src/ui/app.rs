@@ -159,6 +159,42 @@ impl App {
         let last_visible = (self.scroll_offset + self.visible_items - 1).min(self.emails.len() - 1);
         self.list_state.select(Some(last_visible));
     }
+
+    /// Moves forward one page.
+    pub fn page_forward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        // Calculate new scroll offset (one page forward)
+        let new_offset = (self.scroll_offset + self.visible_items).min(
+            self.emails.len().saturating_sub(self.visible_items)
+        );
+
+        // If we can scroll forward
+        if new_offset != self.scroll_offset {
+            self.scroll_offset = new_offset;
+            // Move cursor to the top of the new page
+            self.list_state.select(Some(self.scroll_offset));
+        } else {
+            // Already at the bottom, move cursor to last email
+            self.list_state.select(Some(self.emails.len() - 1));
+        }
+    }
+
+    /// Moves backward one page.
+    pub fn page_backward(&mut self) {
+        if self.emails.is_empty() {
+            return;
+        }
+
+        // Calculate new scroll offset (one page backward)
+        let new_offset = self.scroll_offset.saturating_sub(self.visible_items);
+
+        // Update scroll offset and move cursor to top of new page
+        self.scroll_offset = new_offset;
+        self.list_state.select(Some(self.scroll_offset));
+    }
 }
 
 #[cfg(test)]
@@ -366,5 +402,92 @@ mod tests {
         app.goto_page_middle();
         app.goto_page_bottom();
         assert_eq!(app.list_state.selected(), None);
+    }
+
+    #[test]
+    fn test_page_navigation() {
+        let emails: Vec<Email> = (0..30)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(10); // Window shows 10 items
+
+        // Start at position 0 with scroll_offset 0
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.scroll_offset, 0);
+
+        // Test page forward (Ctrl+F) - should move forward one page
+        app.page_forward();
+        assert_eq!(app.list_state.selected(), Some(10)); // Cursor at top of new page
+        assert_eq!(app.scroll_offset, 10); // Window shows items 10-19
+
+        // Another page forward
+        app.page_forward();
+        assert_eq!(app.list_state.selected(), Some(20)); // Cursor at top of new page
+        assert_eq!(app.scroll_offset, 20); // Window shows items 20-29
+
+        // Try to page forward at the end - should just move cursor to last item
+        app.page_forward();
+        assert_eq!(app.list_state.selected(), Some(29)); // Last email
+        assert_eq!(app.scroll_offset, 20); // Window doesn't change
+
+        // Test page backward (Ctrl+B) - should move backward one page
+        app.page_backward();
+        assert_eq!(app.list_state.selected(), Some(10)); // Cursor at top of new page
+        assert_eq!(app.scroll_offset, 10); // Window shows items 10-19
+
+        // Another page backward
+        app.page_backward();
+        assert_eq!(app.list_state.selected(), Some(0)); // Back to start
+        assert_eq!(app.scroll_offset, 0); // Window shows items 0-9
+
+        // Try to page backward at the beginning - should stay at start
+        app.page_backward();
+        assert_eq!(app.list_state.selected(), Some(0)); // Stay at start
+        assert_eq!(app.scroll_offset, 0); // Window doesn't change
+    }
+
+    #[test]
+    fn test_page_navigation_small_list() {
+        // Test with a list smaller than one page
+        let emails: Vec<Email> = (0..5)
+            .map(|i| Email {
+                _uid: i + 1,
+                subject: format!("Email {}", i + 1),
+                from: format!("test{}@test.com", i + 1),
+                date: Local::now(),
+                is_read: false,
+            })
+            .collect();
+
+        let client = GmailClient::connect("dummy", "dummy");
+        if client.is_err() {
+            return;
+        }
+
+        let mut app = App::new(client.unwrap(), emails);
+        app.set_visible_items(10); // Window can show 10 items but we only have 5
+
+        // Page forward should move to last item since list is smaller than page
+        app.page_forward();
+        assert_eq!(app.list_state.selected(), Some(4)); // Last email
+        assert_eq!(app.scroll_offset, 0); // No scrolling needed
+
+        // Page backward should go to first item
+        app.page_backward();
+        assert_eq!(app.list_state.selected(), Some(0)); // First email
+        assert_eq!(app.scroll_offset, 0); // No scrolling needed
     }
 }
