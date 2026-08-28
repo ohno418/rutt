@@ -1,0 +1,16 @@
+[package]
+name = "rutt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = "0.4.45"
+dirs = "6.0.0"
+imap = "3.0.0-alpha.15"
+mailparse = "0.16.1"
+native-tls = "0.2.18"
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.4"
+unicode-width = "0.2.2"

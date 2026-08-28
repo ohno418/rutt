@@ -1,0 +1,10 @@
+# Copy to ~/.config/rutt/config.toml (chmod 600)
+
+[user]
+email = "you@example.com"
+password = "your-password-or-app-password"
+
+[imap]
+host = "imap.example.com"
+port = 993          # optional (default 993)
+mailbox = "INBOX"   # optional (default INBOX)
