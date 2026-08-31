@@ -45,6 +45,8 @@ pub struct App {
     client: Client,
     state: ListState,
     mode: Mode,
+    /// UIDs read locally but not yet synced to the server.
+    pending_read: Vec<u32>,
     /// Error from the last action, shown on the status line.
     error: Option<String>,
 }
@@ -62,6 +64,7 @@ impl App {
             client,
             state,
             mode: Mode::Index,
+            pending_read: Vec::new(),
             error: None,
         }
     }
@@ -104,6 +107,7 @@ impl App {
                 KeyCode::Char('u') => self.scroll_by(-half, page),
                 KeyCode::Char('e') => self.page_by(1, page),
                 KeyCode::Char('y') => self.page_by(-1, page),
+                KeyCode::Char('r') => self.sync(),
                 _ => {}
             }
             return false;
@@ -158,7 +162,8 @@ impl App {
         false
     }
 
-    /// Fetch the selected message and switch to the pager.
+    /// Fetch the selected message and switch to the pager, marking it read
+    /// locally (`PEEK` leaves the server's `\Seen` untouched until a sync).
     fn open_selected(&mut self) {
         let Some(i) = self.state.selected() else {
             return;
@@ -166,11 +171,26 @@ impl App {
         let uid = self.rows[i].message.uid;
         match self.client.fetch_body(uid) {
             Ok(text) => {
+                if self.rows[i].message.unread {
+                    self.rows[i].message.unread = false;
+                    self.pending_read.push(uid);
+                }
                 self.error = None;
                 self.mode = Mode::Pager {
                     lines: text.lines().map(str::to_string).collect(),
                     scroll: 0,
                 };
+            }
+            Err(e) => self.error = Some(format!("{e:#}")),
+        }
+    }
+
+    /// `ctrl-r` (mutt sync-mailbox): push locally-read messages' `\Seen` to the server.
+    fn sync(&mut self) {
+        match self.client.store_seen(&self.pending_read) {
+            Ok(()) => {
+                self.pending_read.clear();
+                self.error = None;
             }
             Err(e) => self.error = Some(format!("{e:#}")),
         }
@@ -254,7 +274,7 @@ impl App {
 
                 let unread = self.rows.iter().filter(|r| r.message.unread).count();
                 format!(
-                    " q:Quit  j/k:Move  Enter:Read   [{}] {} messages, {} unread",
+                    " q:Quit  j/k:Move  Enter:Read  ^R:Sync   [{}] {} messages, {} unread",
                     self.mailbox,
                     self.rows.len(),
                     unread

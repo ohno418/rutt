@@ -111,6 +111,22 @@ impl Client {
         render_message(raw)
     }
 
+    /// Mark `uids` as read on the server (`+FLAGS \Seen`); no-op when empty.
+    pub fn store_seen(&mut self, uids: &[u32]) -> Result<()> {
+        if uids.is_empty() {
+            return Ok(());
+        }
+        let set = uids
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        self.session
+            .uid_store(&set, "+FLAGS.SILENT (\\Seen)")
+            .context("failed to sync read status")?;
+        Ok(())
+    }
+
     /// Close the connection politely; errors are ignored.
     pub fn logout(mut self) {
         let _ = self.session.logout();
