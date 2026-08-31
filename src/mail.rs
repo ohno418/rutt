@@ -1,8 +1,8 @@
-//! Fetching message headers over IMAP and parsing them into [`Message`]s.
+//! IMAP access: fetching header summaries for the index and full bodies for the pager.
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
-use mailparse::{MailHeaderMap, addrparse, dateparse, parse_headers};
+use mailparse::{MailHeaderMap, ParsedMail, addrparse, dateparse, parse_headers, parse_mail};
 
 use crate::config::Config;
 
@@ -10,7 +10,6 @@ use crate::config::Config;
 #[derive(Debug, Clone)]
 pub struct Message {
     /// IMAP UID within the mailbox.
-    #[allow(dead_code)]
     pub uid: u32,
     /// `Date` header converted to local time, if parseable.
     pub date: Option<DateTime<Local>>,
@@ -30,37 +29,94 @@ pub struct Message {
 const FETCH_QUERY: &str =
     "(UID FLAGS BODY.PEEK[HEADER.FIELDS (DATE FROM SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])";
 
-/// Connect over TLS, log in, and fetch header summaries of every message in the configured mailbox.
-pub fn fetch_messages(config: &Config) -> Result<Vec<Message>> {
-    let client = imap::ClientBuilder::new(&config.imap.host, config.imap.port)
-        .connect()
-        .with_context(|| {
-            format!("failed to connect to {}:{}", config.imap.host, config.imap.port)
-        })?;
+/// An authenticated IMAP session with the configured mailbox selected.
+pub struct Client {
+    session: imap::Session<imap::Connection>,
+}
 
-    let mut session = client
-        .login(&config.user.email, &config.user.password)
-        .map_err(|(e, _)| e)
-        .context("IMAP login failed")?;
+impl Client {
+    /// Connect over TLS, log in, and select the configured mailbox.
+    pub fn connect(config: &Config) -> Result<Self> {
+        let client = imap::ClientBuilder::new(&config.imap.host, config.imap.port)
+            .connect()
+            .with_context(|| {
+                format!("failed to connect to {}:{}", config.imap.host, config.imap.port)
+            })?;
 
-    let mailbox = session
-        .select(&config.imap.mailbox)
-        .with_context(|| format!("failed to select mailbox {}", config.imap.mailbox))?;
+        let mut session = client
+            .login(&config.user.email, &config.user.password)
+            .map_err(|(e, _)| e)
+            .context("IMAP login failed")?;
 
-    let mut messages = Vec::new();
-    if mailbox.exists > 0 {
-        let fetches = session
-            .fetch("1:*", FETCH_QUERY)
-            .context("failed to fetch messages")?;
-        for fetch in fetches.iter() {
-            if let Some(msg) = parse_fetch(fetch) {
-                messages.push(msg);
-            }
-        }
+        session
+            .select(&config.imap.mailbox)
+            .with_context(|| format!("failed to select mailbox {}", config.imap.mailbox))?;
+
+        Ok(Self { session })
     }
 
-    let _ = session.logout();
-    Ok(messages)
+    /// Fetch header summaries of every message in the mailbox.
+    pub fn fetch_messages(&mut self) -> Result<Vec<Message>> {
+        let fetches = match self.session.fetch("1:*", FETCH_QUERY) {
+            Ok(f) => f,
+            // "1:*" is invalid on an empty mailbox; treat that as no messages.
+            Err(imap::Error::Bad(_)) | Err(imap::Error::No(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(e).context("failed to fetch messages"),
+        };
+        Ok(fetches.iter().filter_map(parse_fetch).collect())
+    }
+
+    /// Fetch the full message with `uid` and render it as displayable text.
+    /// `PEEK` keeps the `\Seen` flag untouched.
+    pub fn fetch_body(&mut self, uid: u32) -> Result<String> {
+        let fetches = self
+            .session
+            .uid_fetch(uid.to_string(), "BODY.PEEK[]")
+            .with_context(|| format!("failed to fetch message {uid}"))?;
+        let raw = fetches
+            .iter()
+            .find_map(|f| f.body())
+            .with_context(|| format!("server returned no body for message {uid}"))?;
+        render_message(raw)
+    }
+
+    /// Close the connection politely; errors are ignored.
+    pub fn logout(mut self) {
+        let _ = self.session.logout();
+    }
+}
+
+/// Render a raw RFC 822 message as `headers + blank line + body text`.
+///
+/// The body is the first `text/plain` part; if there is none, the first
+/// `text/html` part is shown raw.
+fn render_message(raw: &[u8]) -> Result<String> {
+    let mail = parse_mail(raw).context("failed to parse message")?;
+
+    let mut out = String::new();
+    for name in ["Date", "From", "To", "Cc", "Subject"] {
+        if let Some(v) = mail.headers.get_first_value(name) {
+            out.push_str(&format!("{name}: {v}\n"));
+        }
+    }
+    out.push('\n');
+
+    let body = find_part(&mail, "text/plain")
+        .or_else(|| find_part(&mail, "text/html"))
+        .map(|p| p.get_body())
+        .transpose()
+        .context("failed to decode body")?
+        .unwrap_or_else(|| "[no text part]".to_string());
+    out.push_str(&body);
+    Ok(out)
+}
+
+/// Depth-first search for the first leaf part whose content type is `mime`.
+fn find_part<'a>(part: &'a ParsedMail<'a>, mime: &str) -> Option<&'a ParsedMail<'a>> {
+    if part.subparts.is_empty() {
+        return (part.ctype.mimetype.eq_ignore_ascii_case(mime)).then_some(part);
+    }
+    part.subparts.iter().find_map(|p| find_part(p, mime))
 }
 
 /// Convert one IMAP FETCH response into a [`Message`]; `None` if it lacks a UID or headers.
@@ -158,6 +214,23 @@ mod tests {
             vec!["a@x", "b@y", "c@z"]
         );
         assert!(extract_ids("nothing").is_empty());
+    }
+
+    #[test]
+    fn prefers_plain_over_html() {
+        let raw = b"From: a@x\r\nSubject: hi\r\nContent-Type: multipart/alternative; boundary=B\r\n\r\n\
+--B\r\nContent-Type: text/html\r\n\r\n<b>hi</b>\r\n\
+--B\r\nContent-Type: text/plain\r\n\r\nplain hi\r\n--B--\r\n";
+        let text = render_message(raw).unwrap();
+        assert!(text.starts_with("From: a@x\nSubject: hi\n\n"));
+        assert!(text.contains("plain hi"));
+        assert!(!text.contains("<b>"));
+    }
+
+    #[test]
+    fn falls_back_to_raw_html() {
+        let raw = b"Subject: h\r\nContent-Type: text/html\r\n\r\n<p>only html</p>\r\n";
+        assert!(render_message(raw).unwrap().contains("<p>only html</p>"));
     }
 
     #[test]

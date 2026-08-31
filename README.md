@@ -8,11 +8,13 @@ A minimalist TUI email client like mutt.
 - Threaded index view (like mutt's `sort = threads`), newest thread first,
   replies nested as a tree.
 - Each row shows `<date> <time> <sender> <subject>` in aligned columns.
-- Unread messages are highlighted. Fetching never marks messages as read.
+- Unread messages are highlighted. Nothing is ever marked as read.
+- Message pager: shows the first `text/plain` part as-is, or the raw HTML
+  if the message has no plain-text part.
 - Vim-style navigation.
 
-Not yet implemented: viewing message bodies, marking read / deleting,
-sending, multiple accounts or mailboxes, caching, OAuth2.
+Not yet implemented: marking read / deleting, sending, multiple accounts or
+mailboxes, caching, OAuth2.
 
 ## Setup
 
@@ -38,17 +40,30 @@ Gmail and iCloud require an app password.
 cargo run
 ```
 
-| Key                | Action       |
-|--------------------|--------------|
-| `j` / `k`, `↓` / `↑` | move         |
+Index:
+
+| Key                       | Action       |
+|---------------------------|--------------|
+| `j` / `k`, `↓` / `↑`      | move         |
 | `g` / `G`, `Home` / `End` | top / bottom |
-| `q`, `Ctrl-C`      | quit         |
+| `Enter`                   | read message |
+| `q`, `Ctrl-C`             | quit         |
+
+Pager:
+
+| Key                       | Action              |
+|---------------------------|---------------------|
+| `j` / `k`, `↓` / `↑`      | scroll one line     |
+| `Space` / `b`, `PgDn` / `PgUp` | scroll one page |
+| `g` / `G`, `Home` / `End` | top / bottom        |
+| `q`, `i`, `Esc`           | back to index       |
+| `Ctrl-C`                  | quit                |
 
 ## Layout
 
 | File            | Role                                          |
 |-----------------|-----------------------------------------------|
 | `src/config.rs` | Load `config.toml`                            |
-| `src/mail.rs`   | IMAP fetch and header parsing                 |
+| `src/mail.rs`   | IMAP session, header parsing, body rendering  |
 | `src/thread.rs` | Thread construction and tree flattening       |
-| `src/ui.rs`     | Index view and key handling (ratatui)         |
+| `src/ui.rs`     | Index view, pager, and key handling (ratatui) |
