@@ -1,20 +1,15 @@
 # rutt
 
-A minimalist TUI email client like mutt.
+A minimalist TUI email client.
 
 ## Features
 
-- Fetches message headers from an IMAP server over TLS (IMAPS).
-- Threaded index view (like mutt's `sort = threads`), newest thread first,
-  replies nested as a tree.
-- Each row shows `<date> <time> <sender> <subject>` in aligned columns.
-- Unread messages are highlighted. Nothing is ever marked as read.
-- Message pager: shows the first `text/plain` part as-is, or the raw HTML
-  if the message has no plain-text part.
+- IMAP over TLS (IMAPS).
+- Threaded index, newest first, with unread messages highlighted.
+- Pager showing the plain-text part (or raw HTML as a fallback).
 - Vim-style navigation.
 
-Not yet implemented: marking read / deleting, sending, multiple accounts or
-mailboxes, caching, OAuth2.
+Not yet implemented: deleting, sending, multiple accounts or mailboxes.
 
 ## Setup
 
@@ -58,12 +53,3 @@ Pager:
 | `g` / `G`, `Home` / `End` | top / bottom        |
 | `q`, `i`, `Esc`           | back to index       |
 | `Ctrl-C`                  | quit                |
-
-## Layout
-
-| File            | Role                                          |
-|-----------------|-----------------------------------------------|
-| `src/config.rs` | Load `config.toml`                            |
-| `src/mail.rs`   | IMAP session, header parsing, body rendering  |
-| `src/thread.rs` | Thread construction and tree flattening       |
-| `src/ui.rs`     | Index view, pager, and key handling (ratatui) |
