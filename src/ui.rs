@@ -15,6 +15,17 @@ use crate::thread::Row;
 const DATE_WIDTH: usize = 16; // "2026-12-31 23:59"
 const SENDER_WIDTH: usize = 20;
 
+/// Thread-tree prefixes and signatures: metadata that should recede.
+const META_COLOR: Color = Color::DarkGray;
+/// Row color for unread messages.
+const UNREAD_COLOR: Color = Color::Yellow;
+/// Quoted text in the pager, rotated by nesting depth (mutt `quoted1..N`).
+const QUOTE_COLORS: [Color; 3] = [Color::Cyan, Color::Blue, Color::Green];
+/// `Date`/`From`/`Subject` header lines in the pager.
+const HEADER_PRIMARY_COLOR: Color = Color::Yellow;
+/// `To`/`Cc`/`Bcc` header lines in the pager.
+const HEADER_RECIPIENT_COLOR: Color = Color::Cyan;
+
 /// Which screen is showing.
 enum Mode {
     Index,
@@ -169,20 +180,16 @@ impl App {
                 )
             }
             Mode::Pager { lines, scroll } => {
-                let wrapped = wrap_lines(lines, main_area.width as usize);
+                let wrapped = style_message(lines, main_area.width as usize);
                 let height = main_area.height as usize;
-                let visible: Vec<Line> = wrapped
-                    .iter()
-                    .skip(*scroll)
-                    .take(height)
-                    .map(|l| Line::from(l.as_str()))
-                    .collect();
+                let total = wrapped.len();
+                let visible: Vec<Line> = wrapped.into_iter().skip(*scroll).take(height).collect();
                 frame.render_widget(Paragraph::new(visible), main_area);
 
-                let pct = if wrapped.len() <= height {
+                let pct = if total <= height {
                     100
                 } else {
-                    ((scroll + height) * 100 / wrapped.len()).min(100)
+                    ((scroll + height) * 100 / total).min(100)
                 };
                 format!(" q:Back  j/k:Scroll   -- {pct}% --")
             }
@@ -194,13 +201,13 @@ impl App {
         let style = if self.error.is_some() {
             Style::default().fg(Color::White).bg(Color::Red)
         } else {
-            Style::default().fg(Color::Black).bg(Color::Green)
+            Style::default().fg(Color::Black).bg(Color::Cyan)
         };
         frame.render_widget(Paragraph::new(status).style(style), status_area);
     }
 }
 
-/// Format one row as `<date> <time> <sender> <tree><subject>`, highlighted if unread.
+/// Format one row as `<date> <time> <sender> <tree><subject>`, colored if unread.
 fn render_row(row: &Row) -> ListItem<'_> {
     let m = &row.message;
     let date = m
@@ -208,22 +215,84 @@ fn render_row(row: &Row) -> ListItem<'_> {
         .map(|d| d.format("%Y-%-m-%-d %H:%M").to_string())
         .unwrap_or_default();
     let sender = pad(&m.sender, SENDER_WIDTH);
-    let text = format!(
-        "{:<dw$} {} {}{}",
-        date,
-        sender,
-        row.prefix,
-        m.subject,
-        dw = DATE_WIDTH
-    );
-    let style = if m.unread {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+    let text_style = if m.unread {
+        Style::default().fg(UNREAD_COLOR)
     } else {
         Style::default()
     };
-    ListItem::new(Line::from(Span::styled(text, style)))
+    ListItem::new(Line::from(vec![
+        Span::styled(format!("{date:<DATE_WIDTH$}  "), text_style),
+        Span::styled(format!("{sender}  "), text_style),
+        Span::styled(row.prefix.as_str(), Style::default().fg(META_COLOR)),
+        Span::styled(m.subject.as_str(), text_style),
+    ]))
+}
+
+/// Wrap and colorize a `headers + blank line + body` message for the pager:
+/// per-field header colors with bold names, quote colors by nesting depth,
+/// dim signature.
+fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
+    let mut out = Vec::new();
+    let mut in_headers = true;
+    let mut in_signature = false;
+    for line in lines {
+        if in_headers && line.is_empty() {
+            in_headers = false;
+        }
+        if !in_headers && line == "-- " {
+            in_signature = true;
+        }
+        let style = if in_signature {
+            Style::default().fg(META_COLOR)
+        } else if in_headers {
+            match line.split(':').next() {
+                Some("Date" | "From" | "Subject") => Style::default()
+                    .fg(HEADER_PRIMARY_COLOR)
+                    .add_modifier(Modifier::BOLD),
+                Some("To" | "Cc" | "Bcc") => Style::default().fg(HEADER_RECIPIENT_COLOR),
+                _ => Style::default(),
+            }
+        } else {
+            match quote_depth(line) {
+                0 => Style::default(),
+                d => Style::default().fg(QUOTE_COLORS[(d - 1) % QUOTE_COLORS.len()]),
+            }
+        };
+        let name_len = if in_headers {
+            line.find(':').map(|i| i + 1).unwrap_or(0)
+        } else {
+            0
+        };
+        for (i, chunk) in wrap_lines(std::slice::from_ref(line), width)
+            .into_iter()
+            .enumerate()
+        {
+            // Bold the `Name:` prefix on the first wrapped chunk of a header line.
+            if i == 0 && name_len > 0 && chunk.is_char_boundary(name_len) {
+                let (name, rest) = chunk.split_at(name_len);
+                out.push(Line::from(vec![
+                    Span::styled(name.to_string(), style.add_modifier(Modifier::BOLD)),
+                    Span::styled(rest.to_string(), style),
+                ]));
+            } else {
+                out.push(Line::from(Span::styled(chunk, style)));
+            }
+        }
+    }
+    out
+}
+
+/// Quote nesting depth: leading `>` characters, ignoring interleaved spaces.
+fn quote_depth(line: &str) -> usize {
+    let mut depth = 0;
+    for ch in line.chars() {
+        match ch {
+            '>' => depth += 1,
+            ' ' => {}
+            _ => break,
+        }
+    }
+    depth
 }
 
 /// Hard-wrap each line at `width` display columns (no word breaking, tabs as 4 spaces).
