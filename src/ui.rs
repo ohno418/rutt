@@ -116,6 +116,8 @@ impl App {
             KeyCode::Char('q') => return true,
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
+            KeyCode::Char('J') => self.select_unread(1),
+            KeyCode::Char('K') => self.select_unread(-1),
             KeyCode::Char('g') | KeyCode::Home => self.select(0),
             KeyCode::Char('G') | KeyCode::End => self.select(self.rows.len().saturating_sub(1)),
             KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
@@ -209,6 +211,30 @@ impl App {
                 self.error = None;
             }
             Err(e) => self.error = Some(format!("{e:#}")),
+        }
+    }
+
+    /// `J`/`K`: jump to the nearest unread row after/before the selection;
+    /// stays put when there is none (no wrap-around).
+    fn select_unread(&mut self, dir: isize) {
+        let Some(cur) = self.state.selected() else {
+            return;
+        };
+        let found = if dir > 0 {
+            self.rows
+                .iter()
+                .enumerate()
+                .skip(cur + 1)
+                .find(|(_, r)| r.message.unread)
+        } else {
+            self.rows[..cur]
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, r)| r.message.unread)
+        };
+        if let Some((i, _)) = found {
+            self.select(i);
         }
     }
 
