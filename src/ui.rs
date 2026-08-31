@@ -9,7 +9,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
 use unicode_width::UnicodeWidthStr;
 
-use crate::mail::Client;
+use crate::mail::{Client, Relation};
 use crate::thread::Row;
 
 const DATE_WIDTH: usize = 16; // "2026-12-31 23:59"
@@ -19,6 +19,8 @@ const SENDER_WIDTH: usize = 20;
 const META_COLOR: Color = Color::DarkGray;
 /// Row color for unread messages.
 const UNREAD_COLOR: Color = Color::Yellow;
+/// The `!` marker on flagged messages.
+const FLAGGED_COLOR: Color = Color::Red;
 /// Quoted text in the pager, rotated by nesting depth (mutt `quoted1..N`).
 const QUOTE_COLORS: [Color; 3] = [Color::Cyan, Color::Blue, Color::Green];
 /// `Date`/`From`/`Subject` header lines in the pager.
@@ -207,7 +209,11 @@ impl App {
     }
 }
 
-/// Format one row as `<date> <time> <sender> <tree><subject>`, colored if unread.
+/// Format one row as `[<flags>] <date> <time> <sender> <tree><subject>`,
+/// colored if unread.
+///
+/// Flags follow mutt's `%Z`: status (`D` > `N` > `r`), then flagged/recipient
+/// (`!` > `F` > `T` > `C`); each is a space when absent, so `[N!]`, `[ C]`, `[  ]`.
 fn render_row(row: &Row) -> ListItem<'_> {
     let m = &row.message;
     let date = m
@@ -220,8 +226,30 @@ fn render_row(row: &Row) -> ListItem<'_> {
     } else {
         Style::default()
     };
+    let status = if m.deleted {
+        'D'
+    } else if m.unread {
+        'N'
+    } else if m.answered {
+        'r'
+    } else {
+        ' '
+    };
+    let (relation, relation_style) = if m.flagged {
+        ('!', Style::default().fg(FLAGGED_COLOR))
+    } else {
+        let c = match m.relation {
+            Relation::FromMe => 'F',
+            Relation::ToMe => 'T',
+            Relation::CcMe => 'C',
+            Relation::None => ' ',
+        };
+        (c, text_style)
+    };
     ListItem::new(Line::from(vec![
-        Span::styled(format!("{date:<DATE_WIDTH$}  "), text_style),
+        Span::styled(format!("[{status}"), text_style),
+        Span::styled(relation.to_string(), relation_style),
+        Span::styled(format!("]  {date:<DATE_WIDTH$}  "), text_style),
         Span::styled(format!("{sender}  "), text_style),
         Span::styled(row.prefix.as_str(), Style::default().fg(META_COLOR)),
         Span::styled(m.subject.as_str(), text_style),

@@ -23,15 +23,37 @@ pub struct Message {
     pub references: Vec<String>,
     /// True when the `\Seen` flag is absent.
     pub unread: bool,
+    /// `\Answered` flag.
+    pub answered: bool,
+    /// `\Deleted` flag.
+    pub deleted: bool,
+    /// `\Flagged` flag.
+    pub flagged: bool,
+    /// How the message relates to the account owner.
+    pub relation: Relation,
+}
+
+/// How a message relates to the account owner (mutt `$to_chars`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Relation {
+    /// The user is not an explicit recipient.
+    None,
+    /// The user sent the message.
+    FromMe,
+    /// The user appears in `To`.
+    ToMe,
+    /// The user appears in `Cc`.
+    CcMe,
 }
 
 /// Fetch only the headers needed for the index; `PEEK` keeps `\Seen` untouched.
-const FETCH_QUERY: &str =
-    "(UID FLAGS BODY.PEEK[HEADER.FIELDS (DATE FROM SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])";
+const FETCH_QUERY: &str = "(UID FLAGS BODY.PEEK[HEADER.FIELDS (DATE FROM TO CC SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])";
 
 /// An authenticated IMAP session with the configured mailbox selected.
 pub struct Client {
     session: imap::Session<imap::Connection>,
+    /// The account owner's address, for [`Relation`] detection.
+    email: String,
 }
 
 impl Client {
@@ -55,7 +77,10 @@ impl Client {
             .select(&config.imap.mailbox)
             .with_context(|| format!("failed to select mailbox {}", config.imap.mailbox))?;
 
-        Ok(Self { session })
+        Ok(Self {
+            session,
+            email: config.user.email.clone(),
+        })
     }
 
     /// Fetch header summaries of every message in the mailbox.
@@ -66,7 +91,10 @@ impl Client {
             Err(imap::Error::Bad(_)) | Err(imap::Error::No(_)) => return Ok(Vec::new()),
             Err(e) => return Err(e).context("failed to fetch messages"),
         };
-        Ok(fetches.iter().filter_map(parse_fetch).collect())
+        Ok(fetches
+            .iter()
+            .filter_map(|f| parse_fetch(f, &self.email))
+            .collect())
     }
 
     /// Fetch the full message with `uid` and render it as displayable text.
@@ -123,14 +151,41 @@ fn find_part<'a>(part: &'a ParsedMail<'a>, mime: &str) -> Option<&'a ParsedMail<
 }
 
 /// Convert one IMAP FETCH response into a [`Message`]; `None` if it lacks a UID or headers.
-fn parse_fetch(fetch: &imap::types::Fetch) -> Option<Message> {
+/// `me` is the account owner's address, for [`Relation`] detection.
+fn parse_fetch(fetch: &imap::types::Fetch, me: &str) -> Option<Message> {
     let uid = fetch.uid?;
-    let unread = !fetch
-        .flags()
-        .iter()
-        .any(|f| matches!(f, imap::types::Flag::Seen));
+    let mut unread = true;
+    let (mut answered, mut deleted, mut flagged) = (false, false, false);
+    for f in fetch.flags() {
+        match f {
+            imap::types::Flag::Seen => unread = false,
+            imap::types::Flag::Answered => answered = true,
+            imap::types::Flag::Deleted => deleted = true,
+            imap::types::Flag::Flagged => flagged = true,
+            _ => {}
+        }
+    }
     let raw = fetch.header().unwrap_or(b"");
     let (headers, _) = parse_headers(raw).ok()?;
+
+    let relation = if headers
+        .get_first_value("From")
+        .is_some_and(|v| contains_addr(&v, me))
+    {
+        Relation::FromMe
+    } else if headers
+        .get_first_value("To")
+        .is_some_and(|v| contains_addr(&v, me))
+    {
+        Relation::ToMe
+    } else if headers
+        .get_first_value("Cc")
+        .is_some_and(|v| contains_addr(&v, me))
+    {
+        Relation::CcMe
+    } else {
+        Relation::None
+    };
 
     let date = headers
         .get_first_value("Date")
@@ -173,6 +228,21 @@ fn parse_fetch(fetch: &imap::types::Fetch) -> Option<Message> {
         message_id,
         references,
         unread,
+        answered,
+        deleted,
+        flagged,
+        relation,
+    })
+}
+
+/// True when `me` appears among the addresses of `header`.
+fn contains_addr(header: &str, me: &str) -> bool {
+    let Ok(list) = addrparse(header) else {
+        return false;
+    };
+    list.iter().any(|a| match a {
+        mailparse::MailAddr::Single(s) => s.addr.eq_ignore_ascii_case(me),
+        mailparse::MailAddr::Group(g) => g.addrs.iter().any(|s| s.addr.eq_ignore_ascii_case(me)),
     })
 }
 
@@ -238,6 +308,12 @@ mod tests {
     fn falls_back_to_raw_html() {
         let raw = b"Subject: h\r\nContent-Type: text/html\r\n\r\n<p>only html</p>\r\n";
         assert!(render_message(raw).unwrap().contains("<p>only html</p>"));
+    }
+
+    #[test]
+    fn detects_own_address() {
+        assert!(contains_addr("Alice <a@x>, Bob <b@y>", "B@Y"));
+        assert!(!contains_addr("Alice <a@x>", "b@y"));
     }
 
     #[test]

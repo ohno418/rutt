@@ -139,6 +139,10 @@ mod tests {
             message_id: Some(id.to_string()),
             references: refs.iter().map(|s| s.to_string()).collect(),
             unread: false,
+            answered: false,
+            deleted: false,
+            flagged: false,
+            relation: crate::mail::Relation::None,
         }
     }
 
