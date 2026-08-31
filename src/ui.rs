@@ -103,8 +103,8 @@ impl App {
             match key.code {
                 KeyCode::Char('f') => self.page_by(page as isize, page),
                 KeyCode::Char('b') => self.page_by(-(page as isize), page),
-                KeyCode::Char('d') => self.scroll_by(half, page),
-                KeyCode::Char('u') => self.scroll_by(-half, page),
+                KeyCode::Char('d') => self.page_by(half, page),
+                KeyCode::Char('u') => self.page_by(-half, page),
                 KeyCode::Char('e') => self.page_by(1, page),
                 KeyCode::Char('y') => self.page_by(-1, page),
                 KeyCode::Char('r') => self.sync(),
@@ -254,21 +254,9 @@ impl App {
         }
     }
 
-    /// Vim `ctrl-d`/`ctrl-u`: scroll the view and the selection together, so
-    /// the selection keeps its position on screen.
-    fn scroll_by(&mut self, delta: isize, page: usize) {
-        if self.rows.is_empty() {
-            return;
-        }
-        self.shift_offset(delta, page);
-        let cur = self.state.selected().unwrap_or(0) as isize;
-        let last = self.rows.len() as isize - 1;
-        self.state
-            .select(Some((cur + delta).clamp(0, last) as usize));
-    }
-
-    /// Vim `ctrl-f`/`ctrl-b`/`ctrl-e`/`ctrl-y`: scroll the view by `delta`
-    /// rows; the selection moves only as far as needed to stay on screen.
+    /// Vim `ctrl-f`/`ctrl-b`/`ctrl-d`/`ctrl-u`/`ctrl-e`/`ctrl-y`: scroll the
+    /// view by `delta` rows; the selection moves only as far as needed to
+    /// stay on screen.
     fn page_by(&mut self, delta: isize, page: usize) {
         if self.rows.is_empty() {
             return;
