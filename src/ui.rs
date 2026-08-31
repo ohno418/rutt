@@ -122,6 +122,7 @@ impl App {
             KeyCode::PageDown => self.page_by(page as isize, page),
             KeyCode::PageUp => self.page_by(-(page as isize), page),
             KeyCode::Enter => self.open_selected(),
+            KeyCode::Char(' ') => self.mark_selected_read(),
             _ => {}
         }
         false
@@ -171,10 +172,7 @@ impl App {
         let uid = self.rows[i].message.uid;
         match self.client.fetch_body(uid) {
             Ok(text) => {
-                if self.rows[i].message.unread {
-                    self.rows[i].message.unread = false;
-                    self.pending_read.push(uid);
-                }
+                self.mark_read(i);
                 self.error = None;
                 self.mode = Mode::Pager {
                     lines: text.lines().map(str::to_string).collect(),
@@ -182,6 +180,24 @@ impl App {
                 };
             }
             Err(e) => self.error = Some(format!("{e:#}")),
+        }
+    }
+
+    /// `Space`: mark the selected message read without opening it, then
+    /// advance to the next row.
+    fn mark_selected_read(&mut self) {
+        if let Some(i) = self.state.selected() {
+            self.mark_read(i);
+            self.move_by(1);
+        }
+    }
+
+    /// Flip row `i` to read locally and queue its UID for the next sync.
+    fn mark_read(&mut self, i: usize) {
+        let m = &mut self.rows[i].message;
+        if m.unread {
+            m.unread = false;
+            self.pending_read.push(m.uid);
         }
     }
 
