@@ -19,7 +19,10 @@ const SENDER_WIDTH: usize = 20;
 enum Mode {
     Index,
     /// Message text split into source lines, plus the scroll offset in wrapped lines.
-    Pager { lines: Vec<String>, scroll: usize },
+    Pager {
+        lines: Vec<String>,
+        scroll: usize,
+    },
 }
 
 /// Application state: the index rows, the IMAP client, and the current screen.
@@ -54,7 +57,9 @@ impl App {
     pub fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         loop {
             terminal.draw(|f| self.draw(f))?;
-            let Event::Key(key) = event::read()? else { continue };
+            let Event::Key(key) = event::read()? else {
+                continue;
+            };
             if key.kind != KeyEventKind::Press {
                 continue;
             }
@@ -90,8 +95,12 @@ impl App {
     /// Pager keys; `q`/`i` return to the index, never quit.
     fn handle_pager_key(&mut self, code: KeyCode, size: ratatui::layout::Size) -> bool {
         let page = size.height.saturating_sub(2).max(1) as usize;
-        let Mode::Pager { lines, scroll } = &mut self.mode else { return false };
-        let max = wrap_lines(lines, size.width as usize).len().saturating_sub(1);
+        let Mode::Pager { lines, scroll } = &mut self.mode else {
+            return false;
+        };
+        let max = wrap_lines(lines, size.width as usize)
+            .len()
+            .saturating_sub(1);
         match code {
             KeyCode::Char('q') | KeyCode::Char('i') | KeyCode::Esc => self.mode = Mode::Index,
             KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
@@ -107,7 +116,9 @@ impl App {
 
     /// Fetch the selected message and switch to the pager.
     fn open_selected(&mut self) {
-        let Some(i) = self.state.selected() else { return };
+        let Some(i) = self.state.selected() else {
+            return;
+        };
         let uid = self.rows[i].message.uid;
         match self.client.fetch_body(uid) {
             Ok(text) => {
@@ -206,7 +217,9 @@ fn render_row(row: &Row) -> ListItem<'_> {
         dw = DATE_WIDTH
     );
     let style = if m.unread {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
@@ -261,7 +274,11 @@ mod tests {
 
     #[test]
     fn wraps_by_display_width() {
-        let lines = vec!["abcdefgh".to_string(), "".to_string(), "日本語テキスト".to_string()];
+        let lines = vec![
+            "abcdefgh".to_string(),
+            "".to_string(),
+            "日本語テキスト".to_string(),
+        ];
         assert_eq!(
             wrap_lines(&lines, 6),
             vec!["abcdef", "gh", "", "日本語", "テキス", "ト"]

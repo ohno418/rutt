@@ -40,7 +40,10 @@ impl Client {
         let client = imap::ClientBuilder::new(&config.imap.host, config.imap.port)
             .connect()
             .with_context(|| {
-                format!("failed to connect to {}:{}", config.imap.host, config.imap.port)
+                format!(
+                    "failed to connect to {}:{}",
+                    config.imap.host, config.imap.port
+                )
             })?;
 
         let mut session = client
@@ -122,7 +125,10 @@ fn find_part<'a>(part: &'a ParsedMail<'a>, mime: &str) -> Option<&'a ParsedMail<
 /// Convert one IMAP FETCH response into a [`Message`]; `None` if it lacks a UID or headers.
 fn parse_fetch(fetch: &imap::types::Fetch) -> Option<Message> {
     let uid = fetch.uid?;
-    let unread = !fetch.flags().iter().any(|f| matches!(f, imap::types::Flag::Seen));
+    let unread = !fetch
+        .flags()
+        .iter()
+        .any(|f| matches!(f, imap::types::Flag::Seen));
     let raw = fetch.header().unwrap_or(b"");
     let (headers, _) = parse_headers(raw).ok()?;
 
@@ -153,11 +159,10 @@ fn parse_fetch(fetch: &imap::types::Fetch) -> Option<Message> {
     if let Some(irt) = headers
         .get_first_value("In-Reply-To")
         .and_then(|v| extract_ids(&v).into_iter().next())
+        && references.last() != Some(&irt)
     {
-        if references.last() != Some(&irt) {
-            references.retain(|r| r != &irt);
-            references.push(irt);
-        }
+        references.retain(|r| r != &irt);
+        references.push(irt);
     }
 
     Some(Message {
@@ -173,15 +178,16 @@ fn parse_fetch(fetch: &imap::types::Fetch) -> Option<Message> {
 
 /// Display name if present, otherwise the address.
 fn parse_sender(from: &str) -> String {
-    if let Ok(list) = addrparse(from) {
-        if let Some(addr) = list.into_inner().into_iter().next() {
-            return match addr {
-                mailparse::MailAddr::Single(s) => {
-                    s.display_name.filter(|n| !n.trim().is_empty()).unwrap_or(s.addr)
-                }
-                mailparse::MailAddr::Group(g) => g.group_name,
-            };
-        }
+    if let Ok(list) = addrparse(from)
+        && let Some(addr) = list.into_inner().into_iter().next()
+    {
+        return match addr {
+            mailparse::MailAddr::Single(s) => s
+                .display_name
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or(s.addr),
+            mailparse::MailAddr::Group(g) => g.group_name,
+        };
     }
     from.trim().to_string()
 }
@@ -218,7 +224,8 @@ mod tests {
 
     #[test]
     fn prefers_plain_over_html() {
-        let raw = b"From: a@x\r\nSubject: hi\r\nContent-Type: multipart/alternative; boundary=B\r\n\r\n\
+        let raw =
+            b"From: a@x\r\nSubject: hi\r\nContent-Type: multipart/alternative; boundary=B\r\n\r\n\
 --B\r\nContent-Type: text/html\r\n\r\n<b>hi</b>\r\n\
 --B\r\nContent-Type: text/plain\r\n\r\nplain hi\r\n--B--\r\n";
         let text = render_message(raw).unwrap();
@@ -235,7 +242,13 @@ mod tests {
 
     #[test]
     fn sender_name_or_addr() {
-        assert_eq!(parse_sender("Linus Torvalds <torvalds@linux-foundation.org>"), "Linus Torvalds");
-        assert_eq!(parse_sender("torvalds@linux-foundation.org"), "torvalds@linux-foundation.org");
+        assert_eq!(
+            parse_sender("Linus Torvalds <torvalds@linux-foundation.org>"),
+            "Linus Torvalds"
+        );
+        assert_eq!(
+            parse_sender("torvalds@linux-foundation.org"),
+            "torvalds@linux-foundation.org"
+        );
     }
 }

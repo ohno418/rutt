@@ -152,16 +152,13 @@ mod tests {
             msg(5, 4, "a3", &["a"]),
         ];
         let rows = build_rows(messages);
-        let got: Vec<(u32, &str)> = rows.iter().map(|r| (r.message.uid, r.prefix.as_str())).collect();
+        let got: Vec<(u32, &str)> = rows
+            .iter()
+            .map(|r| (r.message.uid, r.prefix.as_str()))
+            .collect();
         assert_eq!(
             got,
-            vec![
-                (2, ""),
-                (1, ""),
-                (3, "├─>"),
-                (4, "│ └─>"),
-                (5, "└─>"),
-            ]
+            vec![(2, ""), (1, ""), (3, "├─>"), (4, "│ └─>"), (5, "└─>"),]
         );
     }
 }
