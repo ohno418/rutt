@@ -42,14 +42,13 @@ Index:
 | `j` / `k`, `↓` / `↑`      | move         |
 | `g` / `G`, `Home` / `End` | top / bottom |
 | `Enter`                   | read message |
-| `q`, `Ctrl-C`             | quit         |
+| `q`, `Esc`, `Ctrl-C`      | quit         |
 
 Pager:
 
 | Key                       | Action              |
 |---------------------------|---------------------|
 | `j` / `k`, `↓` / `↑`      | scroll one line     |
-| `Space` / `b`, `PgDn` / `PgUp` | scroll one page |
 | `g` / `G`, `Home` / `End` | top / bottom        |
-| `q`, `i`, `Esc`           | back to index       |
+| `q`, `Esc`                | back to index       |
 | `Ctrl-C`                  | quit                |

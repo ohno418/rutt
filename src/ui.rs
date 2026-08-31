@@ -113,7 +113,7 @@ impl App {
             return false;
         }
         match key.code {
-            KeyCode::Char('q') => return true,
+            KeyCode::Char('q') | KeyCode::Esc => return true,
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('J') => self.select_unread(1),
@@ -130,7 +130,7 @@ impl App {
         false
     }
 
-    /// Pager keys; `q`/`i` return to the index, never quit.
+    /// Pager keys; `q`/`Esc` return to the index, never quit.
     fn handle_pager_key(&mut self, key: KeyEvent, size: ratatui::layout::Size) -> bool {
         let page = page_height(size);
         let Mode::Pager { lines, scroll } = &mut self.mode else {
@@ -153,11 +153,11 @@ impl App {
             return false;
         }
         match key.code {
-            KeyCode::Char('q') | KeyCode::Char('i') | KeyCode::Esc => self.mode = Mode::Index,
+            KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Index,
             KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
             KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
-            KeyCode::Char(' ') | KeyCode::PageDown => *scroll = (*scroll + page).min(max),
-            KeyCode::Char('b') | KeyCode::PageUp => *scroll = scroll.saturating_sub(page),
+            KeyCode::PageDown => *scroll = (*scroll + page).min(max),
+            KeyCode::PageUp => *scroll = scroll.saturating_sub(page),
             KeyCode::Char('g') | KeyCode::Home => *scroll = 0,
             KeyCode::Char('G') | KeyCode::End => *scroll = max,
             _ => {}
