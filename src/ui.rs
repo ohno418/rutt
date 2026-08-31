@@ -1,7 +1,7 @@
 //! The threaded index view, the message pager, and their key handling.
 
 use anyhow::Result;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -79,9 +79,10 @@ impl App {
             if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                 break;
             }
+            let size = terminal.size()?;
             let quit = match self.mode {
-                Mode::Index => self.handle_index_key(key.code),
-                Mode::Pager { .. } => self.handle_pager_key(key.code, terminal.size()?),
+                Mode::Index => self.handle_index_key(key, size),
+                Mode::Pager { .. } => self.handle_pager_key(key, size),
             };
             if quit {
                 break;
@@ -92,13 +93,30 @@ impl App {
     }
 
     /// Index keys; returns true to quit.
-    fn handle_index_key(&mut self, code: KeyCode) -> bool {
-        match code {
+    fn handle_index_key(&mut self, key: KeyEvent, size: ratatui::layout::Size) -> bool {
+        let page = page_height(size);
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            let half = (page / 2).max(1) as isize;
+            match key.code {
+                KeyCode::Char('f') => self.page_by(page as isize, page),
+                KeyCode::Char('b') => self.page_by(-(page as isize), page),
+                KeyCode::Char('d') => self.scroll_by(half, page),
+                KeyCode::Char('u') => self.scroll_by(-half, page),
+                KeyCode::Char('e') => self.page_by(1, page),
+                KeyCode::Char('y') => self.page_by(-1, page),
+                _ => {}
+            }
+            return false;
+        }
+        match key.code {
             KeyCode::Char('q') => return true,
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('g') | KeyCode::Home => self.select(0),
             KeyCode::Char('G') | KeyCode::End => self.select(self.rows.len().saturating_sub(1)),
+            KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
+            KeyCode::PageDown => self.page_by(page as isize, page),
+            KeyCode::PageUp => self.page_by(-(page as isize), page),
             KeyCode::Enter => self.open_selected(),
             _ => {}
         }
@@ -106,15 +124,28 @@ impl App {
     }
 
     /// Pager keys; `q`/`i` return to the index, never quit.
-    fn handle_pager_key(&mut self, code: KeyCode, size: ratatui::layout::Size) -> bool {
-        let page = size.height.saturating_sub(2).max(1) as usize;
+    fn handle_pager_key(&mut self, key: KeyEvent, size: ratatui::layout::Size) -> bool {
+        let page = page_height(size);
         let Mode::Pager { lines, scroll } = &mut self.mode else {
             return false;
         };
         let max = wrap_lines(lines, size.width as usize)
             .len()
             .saturating_sub(1);
-        match code {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            let half = (page / 2).max(1);
+            match key.code {
+                KeyCode::Char('f') => *scroll = (*scroll + page).min(max),
+                KeyCode::Char('b') => *scroll = scroll.saturating_sub(page),
+                KeyCode::Char('d') => *scroll = (*scroll + half).min(max),
+                KeyCode::Char('u') => *scroll = scroll.saturating_sub(half),
+                KeyCode::Char('e') => *scroll = (*scroll + 1).min(max),
+                KeyCode::Char('y') => *scroll = scroll.saturating_sub(1),
+                _ => {}
+            }
+            return false;
+        }
+        match key.code {
             KeyCode::Char('q') | KeyCode::Char('i') | KeyCode::Esc => self.mode = Mode::Index,
             KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
             KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
@@ -159,6 +190,54 @@ impl App {
         if !self.rows.is_empty() {
             self.state.select(Some(i));
         }
+    }
+
+    /// Vim `ctrl-d`/`ctrl-u`: scroll the view and the selection together, so
+    /// the selection keeps its position on screen.
+    fn scroll_by(&mut self, delta: isize, page: usize) {
+        if self.rows.is_empty() {
+            return;
+        }
+        self.shift_offset(delta, page);
+        let cur = self.state.selected().unwrap_or(0) as isize;
+        let last = self.rows.len() as isize - 1;
+        self.state
+            .select(Some((cur + delta).clamp(0, last) as usize));
+    }
+
+    /// Vim `ctrl-f`/`ctrl-b`/`ctrl-e`/`ctrl-y`: scroll the view by `delta`
+    /// rows; the selection moves only as far as needed to stay on screen.
+    fn page_by(&mut self, delta: isize, page: usize) {
+        if self.rows.is_empty() {
+            return;
+        }
+        let offset = self.shift_offset(delta, page) as isize;
+        let cur = self.state.selected().unwrap_or(0) as isize;
+        let bottom = (offset + page as isize - 1).min(self.rows.len() as isize - 1);
+        self.state.select(Some(cur.clamp(offset, bottom) as usize));
+    }
+
+    /// Vim `H`/`M`/`L`: select the top, middle, or bottom row on screen
+    /// without scrolling.
+    fn select_visible(&mut self, key: char, page: usize) {
+        if self.rows.is_empty() {
+            return;
+        }
+        let top = self.state.offset().min(self.rows.len() - 1);
+        let bottom = (top + page - 1).min(self.rows.len() - 1);
+        self.select(match key {
+            'H' => top,
+            'L' => bottom,
+            _ => top + (bottom - top) / 2,
+        });
+    }
+
+    /// Move the view offset by `delta`, clamped so the last page stays full.
+    fn shift_offset(&mut self, delta: isize, page: usize) -> usize {
+        let max = self.rows.len().saturating_sub(page) as isize;
+        let offset = (self.state.offset() as isize + delta).clamp(0, max) as usize;
+        *self.state.offset_mut() = offset;
+        offset
     }
 
     /// Render the current screen and the status line.
@@ -308,6 +387,12 @@ fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
         }
     }
     out
+}
+
+/// Rows in one page of the main area (screen minus status line, minus one
+/// line of overlap for scroll context).
+fn page_height(size: ratatui::layout::Size) -> usize {
+    size.height.saturating_sub(2).max(1) as usize
 }
 
 /// Quote nesting depth: leading `>` characters, ignoring interleaved spaces.
