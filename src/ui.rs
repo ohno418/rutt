@@ -218,7 +218,7 @@ fn render_row(row: &Row) -> ListItem<'_> {
     let m = &row.message;
     let date = m
         .date
-        .map(|d| d.format("%Y-%-m-%-d %H:%M").to_string())
+        .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_default();
     let sender = pad(&m.sender, SENDER_WIDTH);
     let text_style = if m.unread {
