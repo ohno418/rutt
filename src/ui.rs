@@ -38,17 +38,30 @@ enum Mode {
     },
 }
 
+/// A message that temporarily takes over the status line.
+enum Status {
+    /// Shown while a blocking call is in flight.
+    Notice(&'static str),
+    /// Failure of the last action; sticky until the next one overwrites it.
+    Error(String),
+}
+
 /// Application state: the index rows, the IMAP client, and the current screen.
 pub struct App {
+    /// Threaded index rows, in display order.
     rows: Vec<Row>,
+    /// Name of the open mailbox, shown on the status line.
     mailbox: String,
+    /// IMAP session used to fetch bodies and push flag changes.
     client: Client,
+    /// Index selection and scroll offset.
     state: ListState,
+    /// Which screen is showing.
     mode: Mode,
+    /// Message taking over the status line; `None` shows the usual content.
+    status: Option<Status>,
     /// UIDs read locally but not yet synced to the server.
     pending_read: Vec<u32>,
-    /// Error from the last action, shown on the status line.
-    error: Option<String>,
 }
 
 impl App {
@@ -64,8 +77,8 @@ impl App {
             client,
             state,
             mode: Mode::Index,
+            status: None,
             pending_read: Vec::new(),
-            error: None,
         }
     }
 
@@ -82,10 +95,9 @@ impl App {
             if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                 break;
             }
-            let size = terminal.size()?;
             let quit = match self.mode {
-                Mode::Index => self.handle_index_key(key, size),
-                Mode::Pager { .. } => self.handle_pager_key(key, size),
+                Mode::Index => self.handle_index_key(key, terminal)?,
+                Mode::Pager { .. } => self.handle_pager_key(key, terminal)?,
             };
             if quit {
                 break;
@@ -96,8 +108,8 @@ impl App {
     }
 
     /// Index keys; returns true to quit.
-    fn handle_index_key(&mut self, key: KeyEvent, size: ratatui::layout::Size) -> bool {
-        let page = page_height(size);
+    fn handle_index_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
+        let page = page_height(terminal.size()?);
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             let half = (page / 2).max(1) as isize;
             match key.code {
@@ -107,13 +119,13 @@ impl App {
                 KeyCode::Char('u') => self.page_by(-half, page),
                 KeyCode::Char('e') => self.page_by(1, page),
                 KeyCode::Char('y') => self.page_by(-1, page),
-                KeyCode::Char('r') => self.sync(),
+                KeyCode::Char('r') => self.sync(terminal)?,
                 _ => {}
             }
-            return false;
+            return Ok(false);
         }
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return true,
+            KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('J') => self.select_unread(1),
@@ -123,18 +135,19 @@ impl App {
             KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
             KeyCode::PageDown => self.page_by(page as isize, page),
             KeyCode::PageUp => self.page_by(-(page as isize), page),
-            KeyCode::Enter => self.open_selected(),
+            KeyCode::Enter => self.open_selected(terminal)?,
             KeyCode::Char(' ') => self.mark_selected_read(),
             _ => {}
         }
-        false
+        Ok(false)
     }
 
     /// Pager keys; `q`/`Esc` return to the index, never quit.
-    fn handle_pager_key(&mut self, key: KeyEvent, size: ratatui::layout::Size) -> bool {
+    fn handle_pager_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
+        let size = terminal.size()?;
         let page = page_height(size);
         let Mode::Pager { lines, scroll } = &mut self.mode else {
-            return false;
+            return Ok(false);
         };
         let max = wrap_lines(lines, size.width as usize)
             .len()
@@ -150,7 +163,7 @@ impl App {
                 KeyCode::Char('y') => *scroll = scroll.saturating_sub(1),
                 _ => {}
             }
-            return false;
+            return Ok(false);
         }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Index,
@@ -162,27 +175,37 @@ impl App {
             KeyCode::Char('G') | KeyCode::End => *scroll = max,
             _ => {}
         }
-        false
+        Ok(false)
+    }
+
+    /// Show `text` on the status line while the blocking call that follows
+    /// runs; the caller must then overwrite `status` with the call's outcome.
+    fn notify(&mut self, terminal: &mut DefaultTerminal, text: &'static str) -> Result<()> {
+        self.status = Some(Status::Notice(text));
+        terminal.draw(|f| self.draw(f))?;
+        Ok(())
     }
 
     /// Fetch the selected message and switch to the pager, marking it read
     /// locally (`PEEK` leaves the server's `\Seen` untouched until a sync).
-    fn open_selected(&mut self) {
+    fn open_selected(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let Some(i) = self.state.selected() else {
-            return;
+            return Ok(());
         };
+        self.notify(terminal, "Fetching message...")?;
         let uid = self.rows[i].message.uid;
         match self.client.fetch_body(uid) {
             Ok(text) => {
                 self.mark_read(i);
-                self.error = None;
+                self.status = None;
                 self.mode = Mode::Pager {
                     lines: text.lines().map(str::to_string).collect(),
                     scroll: 0,
                 };
             }
-            Err(e) => self.error = Some(format!("{e:#}")),
+            Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
         }
+        Ok(())
     }
 
     /// `Space`: mark the selected message read without opening it, then
@@ -204,14 +227,16 @@ impl App {
     }
 
     /// `ctrl-r` (mutt sync-mailbox): push locally-read messages' `\Seen` to the server.
-    fn sync(&mut self) {
+    fn sync(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+        self.notify(terminal, "Syncing...")?;
         match self.client.store_seen(&self.pending_read) {
             Ok(()) => {
                 self.pending_read.clear();
-                self.error = None;
+                self.status = None;
             }
-            Err(e) => self.error = Some(format!("{e:#}")),
+            Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
         }
+        Ok(())
     }
 
     /// `J`/`K`: jump to the nearest unread row after/before the selection;
@@ -325,14 +350,16 @@ impl App {
                 format!(" q:Back  j/k:Scroll   -- {pct}% --")
             }
         };
-        let status = match &self.error {
-            Some(e) => format!(" Error: {e}"),
-            None => status,
-        };
-        let style = if self.error.is_some() {
-            Style::default().fg(Color::White).bg(Color::Red)
-        } else {
-            Style::default().fg(Color::Black).bg(Color::Cyan)
+        let (status, style) = match &self.status {
+            Some(Status::Notice(n)) => (
+                format!(" {n}"),
+                Style::default().fg(Color::Black).bg(Color::Cyan),
+            ),
+            Some(Status::Error(e)) => (
+                format!(" Error: {e}"),
+                Style::default().fg(Color::White).bg(Color::Red),
+            ),
+            None => (status, Style::default().fg(Color::Black).bg(Color::Cyan)),
         };
         frame.render_widget(Paragraph::new(status).style(style), status_area);
     }
