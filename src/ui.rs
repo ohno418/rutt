@@ -169,6 +169,8 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Index,
             KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
             KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
+            KeyCode::Char('J') => self.open_adjacent(1, terminal)?,
+            KeyCode::Char('K') => self.open_adjacent(-1, terminal)?,
             KeyCode::PageDown => *scroll = (*scroll + page).min(max),
             KeyCode::PageUp => *scroll = scroll.saturating_sub(page),
             KeyCode::Char('g') | KeyCode::Home => *scroll = 0,
@@ -204,6 +206,25 @@ impl App {
                 };
             }
             Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
+        }
+        Ok(())
+    }
+
+    /// `J`/`K` in the pager (mutt next-entry/previous-entry): open the
+    /// message after/before the current one; stays put at either end.
+    /// The selection is restored if the fetch fails.
+    fn open_adjacent(&mut self, dir: isize, terminal: &mut DefaultTerminal) -> Result<()> {
+        let Some(cur) = self.state.selected() else {
+            return Ok(());
+        };
+        let next = cur as isize + dir;
+        if next < 0 || next >= self.rows.len() as isize {
+            return Ok(());
+        }
+        self.select(next as usize);
+        self.open_selected(terminal)?;
+        if matches!(self.status, Some(Status::Error(_))) {
+            self.select(cur);
         }
         Ok(())
     }
