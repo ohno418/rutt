@@ -111,18 +111,20 @@ impl Client {
         render_message(raw)
     }
 
-    /// Mark `uids` as read on the server (`+FLAGS \Seen`); no-op when empty.
-    pub fn store_seen(&mut self, uids: &[u32]) -> Result<()> {
+    /// Set or clear `\Seen` on `uids` (`+FLAGS`/`-FLAGS`); no-op when empty.
+    pub fn set_seen(&mut self, uids: &[u32], seen: bool) -> Result<()> {
         if uids.is_empty() {
             return Ok(());
         }
+
         let set = uids
             .iter()
             .map(u32::to_string)
             .collect::<Vec<_>>()
             .join(",");
+        let op = if seen { '+' } else { '-' };
         self.session
-            .uid_store(&set, "+FLAGS.SILENT (\\Seen)")
+            .uid_store(&set, format!("{op}FLAGS.SILENT (\\Seen)"))
             .context("failed to sync read status")?;
         Ok(())
     }

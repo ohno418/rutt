@@ -37,18 +37,20 @@ cargo run
 
 Index:
 
-| Key                       | Action       |
-|---------------------------|--------------|
-| `j` / `k`, `↓` / `↑`      | move         |
-| `g` / `G`, `Home` / `End` | top / bottom |
-| `Enter`                   | read message |
-| `q`, `Esc`, `Ctrl-C`      | quit         |
+| Key                       | Action                        |
+|---------------------------|-------------------------------|
+| `j` / `k`, `↓` / `↑`      | move                          |
+| `g` / `G`, `Home` / `End` | top / bottom                  |
+| `Enter`                   | read message                  |
+| `Space`                   | toggle read / unread          |
+| `Ctrl-R`                  | sync read state to the server |
+| `q`, `Esc`, `Ctrl-C`      | quit                          |
 
 Pager:
 
-| Key                       | Action              |
-|---------------------------|---------------------|
-| `j` / `k`, `↓` / `↑`      | scroll one line     |
-| `g` / `G`, `Home` / `End` | top / bottom        |
-| `q`, `Esc`                | back to index       |
-| `Ctrl-C`                  | quit                |
+| Key                       | Action          |
+|---------------------------|-----------------|
+| `j` / `k`, `↓` / `↑`      | scroll one line |
+| `g` / `G`, `Home` / `End` | top / bottom    |
+| `q`, `Esc`                | back to index   |
+| `Ctrl-C`                  | quit            |

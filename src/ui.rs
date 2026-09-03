@@ -1,5 +1,7 @@
 //! The threaded index view, the message pager, and their key handling.
 
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
@@ -60,8 +62,8 @@ pub struct App {
     mode: Mode,
     /// Message taking over the status line; `None` shows the usual content.
     status: Option<Status>,
-    /// UIDs read locally but not yet synced to the server.
-    pending_read: Vec<u32>,
+    /// Read-state changes not yet synced to the server: UID to its new `unread`.
+    pending: BTreeMap<u32, bool>,
 }
 
 impl App {
@@ -78,7 +80,7 @@ impl App {
             state,
             mode: Mode::Index,
             status: None,
-            pending_read: Vec::new(),
+            pending: BTreeMap::new(),
         }
     }
 
@@ -136,7 +138,7 @@ impl App {
             KeyCode::PageDown => self.page_by(page as isize, page),
             KeyCode::PageUp => self.page_by(-(page as isize), page),
             KeyCode::Enter => self.open_selected(terminal)?,
-            KeyCode::Char(' ') => self.mark_selected_read(),
+            KeyCode::Char(' ') => self.toggle_selected_read(),
             _ => {}
         }
         Ok(false)
@@ -229,34 +231,55 @@ impl App {
         Ok(())
     }
 
-    /// `Space`: mark the selected message read without opening it, then
-    /// advance to the next row.
-    fn mark_selected_read(&mut self) {
+    /// `Space` (mutt toggle-new): flip the selected message between read and
+    /// unread without opening it, then advance to the next row.
+    fn toggle_selected_read(&mut self) {
         if let Some(i) = self.state.selected() {
-            self.mark_read(i);
+            let unread = !self.rows[i].message.unread;
+            self.set_unread(i, unread);
             self.move_by(1);
         }
     }
 
-    /// Flip row `i` to read locally and queue its UID for the next sync.
+    /// Flip row `i` to read locally and queue it for the next sync.
     fn mark_read(&mut self, i: usize) {
-        let m = &mut self.rows[i].message;
-        if m.unread {
-            m.unread = false;
-            self.pending_read.push(m.uid);
+        if self.rows[i].message.unread {
+            self.set_unread(i, false);
         }
     }
 
-    /// `ctrl-r` (mutt sync-mailbox): push locally-read messages' `\Seen` to the server.
+    /// Set row `i`'s read state locally and queue it for the next sync.
+    fn set_unread(&mut self, i: usize, unread: bool) {
+        let m = &mut self.rows[i].message;
+        m.unread = unread;
+        self.pending.insert(m.uid, unread);
+    }
+
+    /// `ctrl-r` (mutt sync-mailbox): push local read-state changes to the server.
     fn sync(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         self.notify(terminal, "Syncing...")?;
-        match self.client.store_seen(&self.pending_read) {
+
+        let uids = |unread: bool| -> Vec<u32> {
+            self.pending
+                .iter()
+                .filter(|&(_, &u)| u == unread)
+                .map(|(&uid, _)| uid)
+                .collect()
+        };
+        let (seen, unseen) = (uids(false), uids(true));
+        let result = self
+            .client
+            .set_seen(&seen, true)
+            .and_then(|()| self.client.set_seen(&unseen, false));
+
+        match result {
             Ok(()) => {
-                self.pending_read.clear();
+                self.pending.clear();
                 self.status = None;
             }
             Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
         }
+
         Ok(())
     }
 
@@ -350,7 +373,7 @@ impl App {
 
                 let unread = self.rows.iter().filter(|r| r.message.unread).count();
                 format!(
-                    " q:Quit  j/k:Move  Enter:Read  ^R:Sync   [{}] {} messages, {} unread",
+                    " q:Quit  j/k:Move  Enter:Read  Space:Toggle  ^R:Sync   [{}] {} messages, {} unread",
                     self.mailbox,
                     self.rows.len(),
                     unread
