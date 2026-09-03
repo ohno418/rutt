@@ -1,4 +1,4 @@
-//! rutt: a minimalist mutt-like TUI email client.
+//! rutt: a minimalist TUI email client.
 //!
 //! Startup flow: load config -> connect and fetch headers over IMAP -> build threads
 //! -> run the TUI (which fetches bodies on demand and logs out on quit).

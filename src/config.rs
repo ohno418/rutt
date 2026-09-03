@@ -53,7 +53,7 @@ pub fn config_path() -> Result<PathBuf> {
     Ok(dir.join("rutt").join("config.toml"))
 }
 
-/// Read and parse the config file.
+/// Reads and parses the config file.
 pub fn load() -> Result<Config> {
     let path = config_path()?;
     let text = std::fs::read_to_string(&path)

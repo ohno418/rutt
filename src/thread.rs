@@ -1,4 +1,4 @@
-//! Thread construction (mutt `sort = threads` style) and tree flattening.
+//! Thread construction and tree flattening.
 
 use std::collections::HashMap;
 
@@ -21,10 +21,10 @@ struct Node {
     parent: Option<usize>,
 }
 
-/// Build threads from messages and flatten them into display rows.
+/// Builds threads from messages and flattens them into display rows.
 ///
 /// Threads are ordered newest-first by the most recent message in the thread;
-/// replies within a thread are ordered oldest-first, like mutt.
+/// replies within a thread are ordered oldest-first.
 pub fn build_rows(messages: Vec<Message>) -> Vec<Row> {
     let n = messages.len();
     let mut nodes: Vec<Node> = (0..n)
@@ -95,7 +95,7 @@ fn latest_date(nodes: &[Node], messages: &[Message], i: usize) -> Option<DateTim
     best
 }
 
-/// Depth-first walk emitting rows with mutt-style tree prefixes.
+/// Walks depth-first, emitting rows with tree prefixes.
 fn flatten(
     nodes: &[Node],
     messages: &[Message],

@@ -33,7 +33,7 @@ pub struct Message {
     pub relation: Relation,
 }
 
-/// How a message relates to the account owner (mutt `$to_chars`).
+/// How a message relates to the account owner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Relation {
     /// The user is not an explicit recipient.
@@ -46,7 +46,7 @@ pub enum Relation {
     CcMe,
 }
 
-/// Fetch only the headers needed for the index; `PEEK` keeps `\Seen` untouched.
+/// Fetches only the headers needed for the index; `PEEK` keeps `\Seen` untouched.
 const FETCH_QUERY: &str = "(UID FLAGS BODY.PEEK[HEADER.FIELDS (DATE FROM TO CC SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])";
 
 /// An authenticated IMAP session with the configured mailbox selected.
@@ -57,7 +57,7 @@ pub struct Client {
 }
 
 impl Client {
-    /// Connect over TLS, log in, and select the configured mailbox.
+    /// Connects over TLS, logs in, and selects the configured mailbox.
     pub fn connect(config: &Config) -> Result<Self> {
         let client = imap::ClientBuilder::new(&config.imap.host, config.imap.port)
             .connect()
@@ -83,7 +83,7 @@ impl Client {
         })
     }
 
-    /// Fetch header summaries of every message in the mailbox.
+    /// Fetches header summaries of every message in the mailbox.
     pub fn fetch_messages(&mut self) -> Result<Vec<Message>> {
         let fetches = match self.session.fetch("1:*", FETCH_QUERY) {
             Ok(f) => f,
@@ -97,7 +97,7 @@ impl Client {
             .collect())
     }
 
-    /// Fetch the full message with `uid` and render it as displayable text.
+    /// Fetches the full message with `uid` and renders it as displayable text.
     /// `PEEK` keeps the `\Seen` flag untouched.
     pub fn fetch_body(&mut self, uid: u32) -> Result<String> {
         let fetches = self
@@ -111,7 +111,7 @@ impl Client {
         render_message(raw)
     }
 
-    /// Set or clear `\Seen` on `uids` (`+FLAGS`/`-FLAGS`); no-op when empty.
+    /// Sets or clears `\Seen` on `uids` (`+FLAGS`/`-FLAGS`); no-op when empty.
     pub fn set_seen(&mut self, uids: &[u32], seen: bool) -> Result<()> {
         if uids.is_empty() {
             return Ok(());
@@ -129,13 +129,13 @@ impl Client {
         Ok(())
     }
 
-    /// Close the connection politely; errors are ignored.
+    /// Closes the connection politely; errors are ignored.
     pub fn logout(mut self) {
         let _ = self.session.logout();
     }
 }
 
-/// Render a raw RFC 822 message as `headers + blank line + body text`.
+/// Renders a raw RFC 822 message as `headers + blank line + body text`.
 ///
 /// The body is the first `text/plain` part; if there is none, the first
 /// `text/html` part is shown raw.
@@ -160,7 +160,7 @@ fn render_message(raw: &[u8]) -> Result<String> {
     Ok(out)
 }
 
-/// Depth-first search for the first leaf part whose content type is `mime`.
+/// Searches depth-first for the first leaf part whose content type is `mime`.
 fn find_part<'a>(part: &'a ParsedMail<'a>, mime: &str) -> Option<&'a ParsedMail<'a>> {
     if part.subparts.is_empty() {
         return (part.ctype.mimetype.eq_ignore_ascii_case(mime)).then_some(part);
@@ -168,7 +168,7 @@ fn find_part<'a>(part: &'a ParsedMail<'a>, mime: &str) -> Option<&'a ParsedMail<
     part.subparts.iter().find_map(|p| find_part(p, mime))
 }
 
-/// Convert one IMAP FETCH response into a [`Message`]; `None` if it lacks a UID or headers.
+/// Converts one IMAP FETCH response into a [`Message`]; `None` if it lacks a UID or headers.
 /// `me` is the account owner's address, for [`Relation`] detection.
 fn parse_fetch(fetch: &imap::types::Fetch, me: &str) -> Option<Message> {
     let uid = fetch.uid?;
@@ -280,7 +280,7 @@ fn parse_sender(from: &str) -> String {
     from.trim().to_string()
 }
 
-/// Extract `<...>` message ids from a header value.
+/// Extracts `<...>` message ids from a header value.
 fn extract_ids(value: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut rest = value;

@@ -23,7 +23,7 @@ const META_COLOR: Color = Color::DarkGray;
 const UNREAD_COLOR: Color = Color::Yellow;
 /// The `!` marker on flagged messages.
 const FLAGGED_COLOR: Color = Color::Red;
-/// Quoted text in the pager, rotated by nesting depth (mutt `quoted1..N`).
+/// Quoted text in the pager, rotated by nesting depth.
 const QUOTE_COLORS: [Color; 3] = [Color::Cyan, Color::Blue, Color::Green];
 /// `Date`/`From`/`Subject` header lines in the pager.
 const HEADER_PRIMARY_COLOR: Color = Color::Yellow;
@@ -67,7 +67,7 @@ pub struct App {
 }
 
 impl App {
-    /// Create the view with the first row selected.
+    /// Creates the view with the first row selected.
     pub fn new(rows: Vec<Row>, mailbox: String, client: Client) -> Self {
         let mut state = ListState::default();
         if !rows.is_empty() {
@@ -84,7 +84,7 @@ impl App {
         }
     }
 
-    /// Event loop: redraw and handle keys until the user quits, then log out.
+    /// Event loop: redraws and handles keys until the user quits, then logs out.
     pub fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         loop {
             terminal.draw(|f| self.draw(f))?;
@@ -109,7 +109,7 @@ impl App {
         Ok(())
     }
 
-    /// Index keys; returns true to quit.
+    /// Handles index keys.
     fn handle_index_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
         let page = page_height(terminal.size()?);
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -144,7 +144,7 @@ impl App {
         Ok(false)
     }
 
-    /// Pager keys; `q`/`Esc` return to the index, never quit.
+    /// Handles pager keys.
     fn handle_pager_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
         let size = terminal.size()?;
         let page = page_height(size);
@@ -182,7 +182,7 @@ impl App {
         Ok(false)
     }
 
-    /// Show `text` on the status line while the blocking call that follows
+    /// Shows `text` on the status line while the blocking call that follows
     /// runs; the caller must then overwrite `status` with the call's outcome.
     fn notify(&mut self, terminal: &mut DefaultTerminal, text: &'static str) -> Result<()> {
         self.status = Some(Status::Notice(text));
@@ -190,7 +190,7 @@ impl App {
         Ok(())
     }
 
-    /// Fetch the selected message and switch to the pager, marking it read
+    /// Fetches the selected message and switches to the pager, marking it read
     /// locally (`PEEK` leaves the server's `\Seen` untouched until a sync).
     fn open_selected(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let Some(i) = self.state.selected() else {
@@ -212,9 +212,8 @@ impl App {
         Ok(())
     }
 
-    /// `J`/`K` in the pager (mutt next-entry/previous-entry): open the
-    /// message after/before the current one; stays put at either end.
-    /// The selection is restored if the fetch fails.
+    /// Opens the message after/before the current one in the pager; stays put
+    /// at either end. The selection is restored if the fetch fails.
     fn open_adjacent(&mut self, dir: isize, terminal: &mut DefaultTerminal) -> Result<()> {
         let Some(cur) = self.state.selected() else {
             return Ok(());
@@ -231,8 +230,8 @@ impl App {
         Ok(())
     }
 
-    /// `Space` (mutt toggle-new): flip the selected message between read and
-    /// unread without opening it, then advance to the next row.
+    /// Flips the selected message between read and unread without opening it,
+    /// then advances to the next row.
     fn toggle_selected_read(&mut self) {
         if let Some(i) = self.state.selected() {
             let unread = !self.rows[i].message.unread;
@@ -241,21 +240,21 @@ impl App {
         }
     }
 
-    /// Flip row `i` to read locally and queue it for the next sync.
+    /// Flips row `i` to read locally and queues it for the next sync.
     fn mark_read(&mut self, i: usize) {
         if self.rows[i].message.unread {
             self.set_unread(i, false);
         }
     }
 
-    /// Set row `i`'s read state locally and queue it for the next sync.
+    /// Sets row `i`'s read state locally and queues it for the next sync.
     fn set_unread(&mut self, i: usize, unread: bool) {
         let m = &mut self.rows[i].message;
         m.unread = unread;
         self.pending.insert(m.uid, unread);
     }
 
-    /// `ctrl-r` (mutt sync-mailbox): push local read-state changes to the server.
+    /// Pushes local read-state changes to the server.
     fn sync(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         self.notify(terminal, "Syncing...")?;
 
@@ -283,8 +282,8 @@ impl App {
         Ok(())
     }
 
-    /// `J`/`K`: jump to the nearest unread row after/before the selection;
-    /// stays put when there is none (no wrap-around).
+    /// Jumps to the nearest unread row after/before the selection; stays put
+    /// when there is none (no wrap-around).
     fn select_unread(&mut self, dir: isize) {
         let Some(cur) = self.state.selected() else {
             return;
@@ -307,7 +306,7 @@ impl App {
         }
     }
 
-    /// Move the selection by `delta` rows, clamped to the list bounds.
+    /// Moves the selection by `delta` rows, clamped to the list bounds.
     fn move_by(&mut self, delta: isize) {
         if self.rows.is_empty() {
             return;
@@ -323,9 +322,8 @@ impl App {
         }
     }
 
-    /// Vim `ctrl-f`/`ctrl-b`/`ctrl-d`/`ctrl-u`/`ctrl-e`/`ctrl-y`: scroll the
-    /// view by `delta` rows; the selection moves only as far as needed to
-    /// stay on screen.
+    /// Scrolls the view by `delta` rows; the selection moves only as far as
+    /// needed to stay on screen.
     fn page_by(&mut self, delta: isize, page: usize) {
         if self.rows.is_empty() {
             return;
@@ -336,8 +334,7 @@ impl App {
         self.state.select(Some(cur.clamp(offset, bottom) as usize));
     }
 
-    /// Vim `H`/`M`/`L`: select the top, middle, or bottom row on screen
-    /// without scrolling.
+    /// Selects the top, middle, or bottom row on screen without scrolling.
     fn select_visible(&mut self, key: char, page: usize) {
         if self.rows.is_empty() {
             return;
@@ -351,7 +348,7 @@ impl App {
         });
     }
 
-    /// Move the view offset by `delta`, clamped so the last page stays full.
+    /// Moves the view offset by `delta`, clamped so the last page stays full.
     fn shift_offset(&mut self, delta: isize, page: usize) -> usize {
         let max = self.rows.len().saturating_sub(page) as isize;
         let offset = (self.state.offset() as isize + delta).clamp(0, max) as usize;
@@ -359,7 +356,7 @@ impl App {
         offset
     }
 
-    /// Render the current screen and the status line.
+    /// Renders the current screen and the status line.
     fn draw(&mut self, frame: &mut Frame) {
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
@@ -409,11 +406,11 @@ impl App {
     }
 }
 
-/// Format one row as `[<flags>] <date> <time> <sender> <tree><subject>`,
+/// Formats one row as `[<flags>] <date> <time> <sender> <tree><subject>`,
 /// colored if unread.
 ///
-/// Flags follow mutt's `%Z`: status (`D` > `N` > `r`), then flagged/recipient
-/// (`!` > `F` > `T` > `C`); each is a space when absent, so `[N!]`, `[ C]`, `[  ]`.
+/// Flags are two columns: status (`D` > `N` > `r`), then flagged/recipient
+/// (`!` > `F` > `T` > `C`).
 fn render_row(row: &Row) -> ListItem<'_> {
     let m = &row.message;
     let date = m
@@ -456,7 +453,7 @@ fn render_row(row: &Row) -> ListItem<'_> {
     ]))
 }
 
-/// Wrap and colorize a `headers + blank line + body` message for the pager:
+/// Wraps and colorizes a `headers + blank line + body` message for the pager:
 /// per-field header colors with bold names, quote colors by nesting depth,
 /// dim signature.
 fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
@@ -529,7 +526,7 @@ fn quote_depth(line: &str) -> usize {
     depth
 }
 
-/// Hard-wrap each line at `width` display columns (no word breaking, tabs as 4 spaces).
+/// Hard-wraps each line at `width` display columns (no word breaking, tabs as 4 spaces).
 fn wrap_lines(lines: &[String], width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out = Vec::new();
@@ -551,7 +548,7 @@ fn wrap_lines(lines: &[String], width: usize) -> Vec<String> {
     out
 }
 
-/// Pad or truncate `s` to exactly `width` display columns.
+/// Pads or truncates `s` to exactly `width` display columns.
 fn pad(s: &str, width: usize) -> String {
     let mut out = String::new();
     let mut w = 0;
