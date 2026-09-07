@@ -29,6 +29,12 @@ const QUOTE_COLORS: [Color; 3] = [Color::Cyan, Color::Blue, Color::Green];
 const HEADER_PRIMARY_COLOR: Color = Color::Yellow;
 /// `To`/`Cc`/`Bcc` header lines in the pager.
 const HEADER_RECIPIENT_COLOR: Color = Color::Cyan;
+/// Added lines in a patch.
+const DIFF_ADD_COLOR: Color = Color::Green;
+/// Removed lines in a patch.
+const DIFF_DEL_COLOR: Color = Color::Red;
+/// `@@` hunk headers in a patch.
+const DIFF_HUNK_COLOR: Color = Color::Cyan;
 
 /// Which screen is showing.
 enum Mode {
@@ -455,11 +461,16 @@ fn render_row(row: &Row) -> ListItem<'_> {
 
 /// Wraps and colorizes a `headers + blank line + body` message for the pager:
 /// per-field header colors with bold names, quote colors by nesting depth,
-/// dim signature.
+/// git-style patch colors, dim signature.
 fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
     let mut out = Vec::new();
+
     let mut in_headers = true;
     let mut in_signature = false;
+    // Inside an unquoted patch: entered at a `diff`/`@@` line, left at the
+    // first line that is not diff-shaped.
+    let mut in_diff = false;
+
     for line in lines {
         if in_headers && line.is_empty() {
             in_headers = false;
@@ -479,7 +490,14 @@ fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
             }
         } else {
             match quote_depth(line) {
-                0 => Style::default(),
+                0 => {
+                    if line.starts_with("diff ") || line.starts_with("@@ ") {
+                        in_diff = true;
+                    }
+                    let diff = if in_diff { diff_style(line) } else { None };
+                    in_diff = diff.is_some();
+                    diff.unwrap_or_default()
+                }
                 d => Style::default().fg(QUOTE_COLORS[(d - 1) % QUOTE_COLORS.len()]),
             }
         };
@@ -504,6 +522,7 @@ fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
             }
         }
     }
+
     out
 }
 
@@ -511,6 +530,41 @@ fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
 /// line of overlap for scroll context).
 fn page_height(size: ratatui::layout::Size) -> usize {
     size.height.saturating_sub(2).max(1) as usize
+}
+
+/// Style for one line of a unified diff, or `None` if the line is not
+/// diff-shaped: file headers bold, hunk headers cyan, `+` green, `-` red,
+/// context and `\ No newline` plain. Blank lines count as context, since
+/// some mailers strip the leading space.
+fn diff_style(line: &str) -> Option<Style> {
+    const META_PREFIXES: [&str; 14] = [
+        "diff ",
+        "index ",
+        "--- ",
+        "+++ ",
+        "similarity index ",
+        "dissimilarity index ",
+        "rename from ",
+        "rename to ",
+        "copy from ",
+        "copy to ",
+        "new file mode ",
+        "deleted file mode ",
+        "old mode ",
+        "new mode ",
+    ];
+    if META_PREFIXES.iter().any(|p| line.starts_with(p)) || line.starts_with("Binary files ") {
+        return Some(Style::default().add_modifier(Modifier::BOLD));
+    }
+    if line.starts_with("@@") {
+        return Some(Style::default().fg(DIFF_HUNK_COLOR));
+    }
+    match line.chars().next() {
+        Some('+') => Some(Style::default().fg(DIFF_ADD_COLOR)),
+        Some('-') => Some(Style::default().fg(DIFF_DEL_COLOR)),
+        Some(' ' | '\\') | None => Some(Style::default()),
+        _ => None,
+    }
 }
 
 /// Quote nesting depth: leading `>` characters, ignoring interleaved spaces.
@@ -571,6 +625,44 @@ fn pad(s: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Foreground color of the first span of each rendered line.
+    fn colors(text: &str) -> Vec<Option<Color>> {
+        let lines: Vec<String> = text.lines().map(str::to_string).collect();
+        style_message(&lines, 80)
+            .iter()
+            .map(|l| l.spans[0].style.fg)
+            .collect()
+    }
+
+    #[test]
+    fn colors_patch_body() {
+        let got = colors(
+            "Subject: [PATCH] x\n\n- a bullet, not a diff\n---\n f | 1 +\n\ndiff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n context\n\nTrailing prose\n-- \n2.50.0",
+        );
+        assert_eq!(
+            got,
+            vec![
+                Some(HEADER_PRIMARY_COLOR),
+                None,
+                None, // bullet
+                None, // ---
+                None, // diffstat
+                None,
+                None, // diff --git (bold only)
+                None, // ---
+                None, // +++
+                Some(DIFF_HUNK_COLOR),
+                Some(DIFF_DEL_COLOR),
+                Some(DIFF_ADD_COLOR),
+                None, // context
+                None, // blank
+                None, // prose leaves the diff
+                Some(META_COLOR),
+                Some(META_COLOR),
+            ]
+        );
+    }
 
     #[test]
     fn wraps_by_display_width() {
