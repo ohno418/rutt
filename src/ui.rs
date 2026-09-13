@@ -1,40 +1,21 @@
-//! The threaded index view, the message pager, and their key handling.
+//! The event loop and status line shared by the index view and the pager.
+
+mod index;
+mod pager;
+mod text;
+mod theme;
 
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Size};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::style::{Color, Style};
+use ratatui::widgets::{ListState, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
-use unicode_width::UnicodeWidthStr;
 
-use crate::mail::{Client, Flag, Relation};
+use crate::mail::{Client, Flag};
 use crate::thread::Row;
-
-const DATE_WIDTH: usize = 16; // "2026-12-31 23:59"
-const SENDER_WIDTH: usize = 20;
-
-/// Thread-tree prefixes and signatures: metadata that should recede.
-const META_COLOR: Color = Color::DarkGray;
-/// Row color for unread messages.
-const UNREAD_COLOR: Color = Color::Yellow;
-/// The `!` marker on flagged messages.
-const FLAGGED_COLOR: Color = Color::Red;
-/// Quoted text in the pager, rotated by nesting depth.
-const QUOTE_COLORS: [Color; 3] = [Color::Cyan, Color::Blue, Color::Green];
-/// `Date`/`From`/`Subject` header lines in the pager.
-const HEADER_PRIMARY_COLOR: Color = Color::Yellow;
-/// `To`/`Cc`/`Bcc` header lines in the pager.
-const HEADER_RECIPIENT_COLOR: Color = Color::Cyan;
-/// Added lines in a patch.
-const DIFF_ADD_COLOR: Color = Color::Green;
-/// Removed lines in a patch.
-const DIFF_DEL_COLOR: Color = Color::Red;
-/// `@@` hunk headers in a patch.
-const DIFF_HUNK_COLOR: Color = Color::Cyan;
 
 /// Which screen is showing.
 enum Mode {
@@ -134,79 +115,6 @@ impl App {
         Ok(())
     }
 
-    /// Handles a key on the index and returns any required effect.
-    fn handle_index_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
-        let page = page_height(size);
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            let half = (page / 2).max(1) as isize;
-            match key.code {
-                KeyCode::Char('f') => self.page_by(page as isize, page),
-                KeyCode::Char('b') => self.page_by(-(page as isize), page),
-                KeyCode::Char('d') => self.page_by(half, page),
-                KeyCode::Char('u') => self.page_by(-half, page),
-                KeyCode::Char('e') => self.page_by(1, page),
-                KeyCode::Char('y') => self.page_by(-1, page),
-                KeyCode::Char('r') => return Some(Effect::Sync),
-                _ => {}
-            }
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return Some(Effect::Quit),
-            KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
-            KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
-            KeyCode::Char('J') => self.select_unread(1),
-            KeyCode::Char('K') => self.select_unread(-1),
-            KeyCode::Char('g') | KeyCode::Home => self.select(0),
-            KeyCode::Char('G') | KeyCode::End => self.select(self.rows.len().saturating_sub(1)),
-            KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
-            KeyCode::PageDown => self.page_by(page as isize, page),
-            KeyCode::PageUp => self.page_by(-(page as isize), page),
-            KeyCode::Enter => return self.state.selected().map(Effect::Open),
-            KeyCode::Char(' ') => self.toggle_selected_read(),
-            KeyCode::Tab => self.toggle_selected_flagged(),
-            _ => {}
-        }
-        None
-    }
-
-    /// Handles a key in the pager and returns any required effect.
-    fn handle_pager_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
-        let page = page_height(size);
-        let Mode::Pager { lines, scroll } = &mut self.mode else {
-            return None;
-        };
-        let max = wrap_lines(lines, size.width as usize)
-            .len()
-            .saturating_sub(1);
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            let half = (page / 2).max(1);
-            match key.code {
-                KeyCode::Char('f') => *scroll = (*scroll + page).min(max),
-                KeyCode::Char('b') => *scroll = scroll.saturating_sub(page),
-                KeyCode::Char('d') => *scroll = (*scroll + half).min(max),
-                KeyCode::Char('u') => *scroll = scroll.saturating_sub(half),
-                KeyCode::Char('e') => *scroll = (*scroll + 1).min(max),
-                KeyCode::Char('y') => *scroll = scroll.saturating_sub(1),
-                _ => {}
-            }
-            return None;
-        }
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Index,
-            KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
-            KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
-            KeyCode::Char('J') => return self.adjacent(1).map(Effect::Open),
-            KeyCode::Char('K') => return self.adjacent(-1).map(Effect::Open),
-            KeyCode::PageDown => *scroll = (*scroll + page).min(max),
-            KeyCode::PageUp => *scroll = scroll.saturating_sub(page),
-            KeyCode::Char('g') | KeyCode::Home => *scroll = 0,
-            KeyCode::Char('G') | KeyCode::End => *scroll = max,
-            _ => {}
-        }
-        None
-    }
-
     /// Shows `text` on the status line while the blocking call that follows
     /// runs; the caller must then overwrite `status` with the call's outcome.
     fn notify(&mut self, terminal: &mut DefaultTerminal, text: &'static str) -> Result<()> {
@@ -234,49 +142,6 @@ impl App {
         }
     }
 
-    /// The row after/before the selection; `None` at either end.
-    fn adjacent(&self, dir: isize) -> Option<usize> {
-        let next = self.state.selected()? as isize + dir;
-        (0..self.rows.len() as isize)
-            .contains(&next)
-            .then_some(next as usize)
-    }
-
-    /// Flips the selected message between read and unread without opening it,
-    /// then advances to the next row.
-    fn toggle_selected_read(&mut self) {
-        if let Some(i) = self.state.selected() {
-            let unread = !self.rows[i].message.unread;
-            self.set_unread(i, unread);
-            self.move_by(1);
-        }
-    }
-
-    /// Flips row `i` to read locally and queues it for the next sync.
-    fn mark_read(&mut self, i: usize) {
-        if self.rows[i].message.unread {
-            self.set_unread(i, false);
-        }
-    }
-
-    /// Sets row `i`'s read state locally and queues it for the next sync.
-    fn set_unread(&mut self, i: usize, unread: bool) {
-        let m = &mut self.rows[i].message;
-        m.unread = unread;
-        self.pending.insert((Flag::Seen, m.uid), !unread);
-    }
-
-    /// Flips the selected message between flagged and unflagged locally,
-    /// queues it for the next sync, then advances to the next row.
-    fn toggle_selected_flagged(&mut self) {
-        if let Some(i) = self.state.selected() {
-            let m = &mut self.rows[i].message;
-            m.flagged = !m.flagged;
-            self.pending.insert((Flag::Flagged, m.uid), m.flagged);
-            self.move_by(1);
-        }
-    }
-
     /// Pushes local flag changes to the server.
     fn sync(&mut self, client: &mut Client) {
         let mut groups: BTreeMap<(Flag, bool), Vec<u32>> = BTreeMap::new();
@@ -296,114 +161,14 @@ impl App {
         }
     }
 
-    /// Jumps to the nearest unread row after/before the selection; stays put
-    /// when there is none (no wrap-around).
-    fn select_unread(&mut self, dir: isize) {
-        let Some(cur) = self.state.selected() else {
-            return;
-        };
-        let found = if dir > 0 {
-            self.rows
-                .iter()
-                .enumerate()
-                .skip(cur + 1)
-                .find(|(_, r)| r.message.unread)
-        } else {
-            self.rows[..cur]
-                .iter()
-                .enumerate()
-                .rev()
-                .find(|(_, r)| r.message.unread)
-        };
-        if let Some((i, _)) = found {
-            self.select(i);
-        }
-    }
-
-    /// Moves the selection by `delta` rows, clamped to the list bounds.
-    fn move_by(&mut self, delta: isize) {
-        if self.rows.is_empty() {
-            return;
-        }
-        let cur = self.state.selected().unwrap_or(0) as isize;
-        let next = (cur + delta).clamp(0, self.rows.len() as isize - 1);
-        self.select(next as usize);
-    }
-
-    fn select(&mut self, i: usize) {
-        if !self.rows.is_empty() {
-            self.state.select(Some(i));
-        }
-    }
-
-    /// Scrolls the view by `delta` rows; the selection moves only as far as
-    /// needed to stay on screen.
-    fn page_by(&mut self, delta: isize, page: usize) {
-        if self.rows.is_empty() {
-            return;
-        }
-        let offset = self.shift_offset(delta, page) as isize;
-        let cur = self.state.selected().unwrap_or(0) as isize;
-        let bottom = (offset + page as isize - 1).min(self.rows.len() as isize - 1);
-        self.state.select(Some(cur.clamp(offset, bottom) as usize));
-    }
-
-    /// Selects the top, middle, or bottom row on screen without scrolling.
-    fn select_visible(&mut self, key: char, page: usize) {
-        if self.rows.is_empty() {
-            return;
-        }
-        let top = self.state.offset().min(self.rows.len() - 1);
-        let bottom = (top + page - 1).min(self.rows.len() - 1);
-        self.select(match key {
-            'H' => top,
-            'L' => bottom,
-            _ => top + (bottom - top) / 2,
-        });
-    }
-
-    /// Moves the view offset by `delta`, clamped so the last page stays full.
-    fn shift_offset(&mut self, delta: isize, page: usize) -> usize {
-        let max = self.rows.len().saturating_sub(page) as isize;
-        let offset = (self.state.offset() as isize + delta).clamp(0, max) as usize;
-        *self.state.offset_mut() = offset;
-        offset
-    }
-
     /// Renders the current screen and the status line.
     fn draw(&mut self, frame: &mut Frame) {
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
 
-        let status = match &self.mode {
-            Mode::Index => {
-                let items: Vec<ListItem> = self.rows.iter().map(render_row).collect();
-                let list = List::new(items)
-                    .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-                frame.render_stateful_widget(list, main_area, &mut self.state);
-
-                let unread = self.rows.iter().filter(|r| r.message.unread).count();
-                format!(
-                    " q:Quit  j/k:Move  Enter:Read  Space:Toggle  Tab:Flag  ^R:Sync   [{}] {} messages, {} unread",
-                    self.mailbox,
-                    self.rows.len(),
-                    unread
-                )
-            }
-            Mode::Pager { lines, scroll } => {
-                let wrapped = style_message(lines, main_area.width as usize);
-                let height = main_area.height as usize;
-                let total = wrapped.len();
-                let visible: Vec<Line> = wrapped.into_iter().skip(*scroll).take(height).collect();
-                frame.render_widget(Paragraph::new(visible), main_area);
-
-                let pct = if total <= height {
-                    100
-                } else {
-                    ((scroll + height) * 100 / total).min(100)
-                };
-                format!(" q:Back  j/k:Scroll   -- {pct}% --")
-            }
+        let status = match self.mode {
+            Mode::Index => self.draw_index(frame, main_area),
+            Mode::Pager { .. } => self.draw_pager(frame, main_area),
         };
         let (status, style) = match &self.status {
             Some(Status::Notice(n)) => (
@@ -420,220 +185,21 @@ impl App {
     }
 }
 
-/// Formats one row as `[<flags>] <date> <time> <sender> <tree><subject>`,
-/// colored if unread.
-///
-/// Flags are two columns: status (`D` > `N` > `r`), then flagged/recipient
-/// (`!` > `F` > `T` > `C`).
-fn render_row(row: &Row) -> ListItem<'_> {
-    let m = &row.message;
-    let date = m
-        .date
-        .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_default();
-    let sender = pad(&m.sender, SENDER_WIDTH);
-    let text_style = if m.unread {
-        Style::default().fg(UNREAD_COLOR)
-    } else {
-        Style::default()
-    };
-    let status = if m.deleted {
-        'D'
-    } else if m.unread {
-        'N'
-    } else if m.answered {
-        'r'
-    } else {
-        ' '
-    };
-    let (relation, relation_style) = if m.flagged {
-        ('!', Style::default().fg(FLAGGED_COLOR))
-    } else {
-        let c = match m.relation {
-            Relation::FromMe => 'F',
-            Relation::ToMe => 'T',
-            Relation::CcMe => 'C',
-            Relation::None => ' ',
-        };
-        (c, text_style)
-    };
-    ListItem::new(Line::from(vec![
-        Span::styled(format!("[{status}"), text_style),
-        Span::styled(relation.to_string(), relation_style),
-        Span::styled(format!("]  {date:<DATE_WIDTH$}  "), text_style),
-        Span::styled(format!("{sender}  "), text_style),
-        Span::styled(row.prefix.as_str(), Style::default().fg(META_COLOR)),
-        Span::styled(m.subject.as_str(), text_style),
-    ]))
-}
-
-/// Wraps and colorizes a `headers + blank line + body` message for the pager:
-/// per-field header colors with bold names, quote colors by nesting depth,
-/// git-style patch colors, dim signature.
-fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
-    let mut out = Vec::new();
-
-    let mut in_headers = true;
-    let mut in_signature = false;
-    // Inside an unquoted patch: entered at a `diff`/`@@` line, left at the
-    // first line that is not diff-shaped.
-    let mut in_diff = false;
-
-    for line in lines {
-        if in_headers && line.is_empty() {
-            in_headers = false;
-        }
-        if !in_headers && line == "-- " {
-            in_signature = true;
-        }
-        let style = if in_signature {
-            Style::default().fg(META_COLOR)
-        } else if in_headers {
-            match line.split(':').next() {
-                Some("Date" | "From" | "Subject") => Style::default()
-                    .fg(HEADER_PRIMARY_COLOR)
-                    .add_modifier(Modifier::BOLD),
-                Some("To" | "Cc" | "Bcc") => Style::default().fg(HEADER_RECIPIENT_COLOR),
-                _ => Style::default(),
-            }
-        } else {
-            match quote_depth(line) {
-                0 => {
-                    if line.starts_with("diff ") || line.starts_with("@@ ") {
-                        in_diff = true;
-                    }
-                    let diff = if in_diff { diff_style(line) } else { None };
-                    in_diff = diff.is_some();
-                    diff.unwrap_or_default()
-                }
-                d => Style::default().fg(QUOTE_COLORS[(d - 1) % QUOTE_COLORS.len()]),
-            }
-        };
-        let name_len = if in_headers {
-            line.find(':').map(|i| i + 1).unwrap_or(0)
-        } else {
-            0
-        };
-        for (i, chunk) in wrap_lines(std::slice::from_ref(line), width)
-            .into_iter()
-            .enumerate()
-        {
-            // Bold the `Name:` prefix on the first wrapped chunk of a header line.
-            if i == 0 && name_len > 0 && chunk.is_char_boundary(name_len) {
-                let (name, rest) = chunk.split_at(name_len);
-                out.push(Line::from(vec![
-                    Span::styled(name.to_string(), style.add_modifier(Modifier::BOLD)),
-                    Span::styled(rest.to_string(), style),
-                ]));
-            } else {
-                out.push(Line::from(Span::styled(chunk, style)));
-            }
-        }
-    }
-
-    out
-}
-
 /// Rows in one page of the main area (screen minus status line, minus one
 /// line of overlap for scroll context).
 fn page_height(size: Size) -> usize {
     size.height.saturating_sub(2).max(1) as usize
 }
 
-/// Style for one line of a unified diff, or `None` if the line is not
-/// diff-shaped: file headers bold, hunk headers cyan, `+` green, `-` red,
-/// context and `\ No newline` plain. Blank lines count as context, since
-/// some mailers strip the leading space.
-fn diff_style(line: &str) -> Option<Style> {
-    const META_PREFIXES: [&str; 14] = [
-        "diff ",
-        "index ",
-        "--- ",
-        "+++ ",
-        "similarity index ",
-        "dissimilarity index ",
-        "rename from ",
-        "rename to ",
-        "copy from ",
-        "copy to ",
-        "new file mode ",
-        "deleted file mode ",
-        "old mode ",
-        "new mode ",
-    ];
-    if META_PREFIXES.iter().any(|p| line.starts_with(p)) || line.starts_with("Binary files ") {
-        return Some(Style::default().add_modifier(Modifier::BOLD));
-    }
-    if line.starts_with("@@") {
-        return Some(Style::default().fg(DIFF_HUNK_COLOR));
-    }
-    match line.chars().next() {
-        Some('+') => Some(Style::default().fg(DIFF_ADD_COLOR)),
-        Some('-') => Some(Style::default().fg(DIFF_DEL_COLOR)),
-        Some(' ' | '\\') | None => Some(Style::default()),
-        _ => None,
-    }
-}
-
-/// Quote nesting depth: leading `>` characters, ignoring interleaved spaces.
-fn quote_depth(line: &str) -> usize {
-    let mut depth = 0;
-    for ch in line.chars() {
-        match ch {
-            '>' => depth += 1,
-            ' ' => {}
-            _ => break,
-        }
-    }
-    depth
-}
-
-/// Hard-wraps each line at `width` display columns (no word breaking, tabs as 4 spaces).
-fn wrap_lines(lines: &[String], width: usize) -> Vec<String> {
-    let width = width.max(1);
-    let mut out = Vec::new();
-    for line in lines {
-        let line = line.replace('\t', "    ");
-        let mut cur = String::new();
-        let mut w = 0;
-        for ch in line.chars() {
-            let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-            if w + cw > width && !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
-                w = 0;
-            }
-            cur.push(ch);
-            w += cw;
-        }
-        out.push(cur);
-    }
-    out
-}
-
-/// Pads or truncates `s` to exactly `width` display columns.
-fn pad(s: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut w = 0;
-    for ch in s.chars() {
-        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-        if w + cw > width {
-            break;
-        }
-        out.push(ch);
-        w += cw;
-    }
-    while w < width {
-        out.push(' ');
-        w += 1;
-    }
-    debug_assert_eq!(out.width(), width);
-    out
-}
-
+/// Fixtures and key helpers for the index and pager tests.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mail::Message;
+mod testing {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Size;
+
+    use super::{App, Effect, Mode};
+    use crate::mail::{Message, Relation};
+    use crate::thread::Row;
 
     /// Terminal size giving a page of 5 rows.
     const SIZE: Size = Size {
@@ -642,7 +208,7 @@ mod tests {
     };
 
     /// An index over rows with UIDs 1.. and the given unread states.
-    fn index(unread: &[bool]) -> App {
+    pub(super) fn index(unread: &[bool]) -> App {
         let rows = unread
             .iter()
             .enumerate()
@@ -667,7 +233,7 @@ mod tests {
     }
 
     /// The same app with row `i` selected and `n` lines open in the pager.
-    fn pager(mut app: App, i: usize, n: usize) -> App {
+    pub(super) fn pager(mut app: App, i: usize, n: usize) -> App {
         app.select(i);
         app.mode = Mode::Pager {
             lines: vec!["x".to_string(); n],
@@ -676,223 +242,29 @@ mod tests {
         app
     }
 
-    fn press(app: &mut App, key: KeyEvent) -> Option<Effect> {
+    pub(super) fn press(app: &mut App, key: KeyEvent) -> Option<Effect> {
         match app.mode {
             Mode::Index => app.handle_index_key(key, SIZE),
             Mode::Pager { .. } => app.handle_pager_key(key, SIZE),
         }
     }
 
-    fn key(c: char) -> KeyEvent {
+    pub(super) fn key(c: char) -> KeyEvent {
         KeyEvent::from(KeyCode::Char(c))
     }
 
-    fn ctrl(c: char) -> KeyEvent {
+    pub(super) fn ctrl(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
     }
 
-    fn selected(app: &App) -> Option<usize> {
+    pub(super) fn selected(app: &App) -> Option<usize> {
         app.state.selected()
     }
 
-    fn scroll(app: &App) -> usize {
+    pub(super) fn scroll(app: &App) -> usize {
         match app.mode {
             Mode::Pager { scroll, .. } => scroll,
             Mode::Index => panic!("not in the pager"),
         }
-    }
-
-    #[test]
-    fn index_keys_return_effects() {
-        let mut app = index(&[false; 3]);
-        assert_eq!(press(&mut app, key('j')), None);
-        assert_eq!(
-            press(&mut app, KeyCode::Enter.into()),
-            Some(Effect::Open(1))
-        );
-        assert_eq!(press(&mut app, ctrl('r')), Some(Effect::Sync));
-        assert_eq!(press(&mut app, key('q')), Some(Effect::Quit));
-        assert_eq!(press(&mut app, KeyCode::Esc.into()), Some(Effect::Quit));
-    }
-
-    #[test]
-    fn empty_index_opens_nothing() {
-        let mut app = index(&[]);
-        assert_eq!(press(&mut app, key('j')), None);
-        assert_eq!(press(&mut app, ctrl('f')), None);
-        assert_eq!(press(&mut app, KeyCode::Enter.into()), None);
-        assert_eq!(selected(&app), None);
-    }
-
-    #[test]
-    fn moves_within_bounds() {
-        let mut app = index(&[false; 3]);
-        press(&mut app, key('k'));
-        assert_eq!(selected(&app), Some(0));
-        press(&mut app, key('G'));
-        assert_eq!(selected(&app), Some(2));
-        press(&mut app, key('j'));
-        assert_eq!(selected(&app), Some(2));
-        press(&mut app, key('g'));
-        assert_eq!(selected(&app), Some(0));
-    }
-
-    #[test]
-    fn jumps_between_unread() {
-        let mut app = index(&[false, true, false, true]);
-        press(&mut app, key('J'));
-        assert_eq!(selected(&app), Some(1));
-        press(&mut app, key('J'));
-        assert_eq!(selected(&app), Some(3));
-        press(&mut app, key('J'));
-        assert_eq!(selected(&app), Some(3));
-        press(&mut app, key('K'));
-        assert_eq!(selected(&app), Some(1));
-        press(&mut app, key('K'));
-        assert_eq!(selected(&app), Some(1));
-    }
-
-    #[test]
-    fn pages_keep_selection_on_screen() {
-        let mut app = index(&[false; 10]);
-        press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
-        // Already at the last full page.
-        press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
-        press(&mut app, ctrl('b'));
-        assert_eq!((app.state.offset(), selected(&app)), (0, Some(4)));
-        press(&mut app, ctrl('d'));
-        assert_eq!((app.state.offset(), selected(&app)), (2, Some(4)));
-    }
-
-    #[test]
-    fn selects_visible_rows() {
-        let mut app = index(&[false; 10]);
-        press(&mut app, key('L'));
-        assert_eq!(selected(&app), Some(4));
-        press(&mut app, key('M'));
-        assert_eq!(selected(&app), Some(2));
-        press(&mut app, key('H'));
-        assert_eq!(selected(&app), Some(0));
-
-        // Fewer rows than a page.
-        let mut app = index(&[false; 3]);
-        press(&mut app, key('L'));
-        assert_eq!(selected(&app), Some(2));
-    }
-
-    #[test]
-    fn toggles_read_and_queues_sync() {
-        let mut app = index(&[true, false]);
-        press(&mut app, key(' '));
-        assert!(!app.rows[0].message.unread);
-        assert_eq!(selected(&app), Some(1));
-        // The last row stays selected.
-        press(&mut app, key(' '));
-        assert!(app.rows[1].message.unread);
-        assert_eq!(selected(&app), Some(1));
-        assert_eq!(
-            app.pending,
-            BTreeMap::from([((Flag::Seen, 1), true), ((Flag::Seen, 2), false)])
-        );
-    }
-
-    #[test]
-    fn toggles_flagged_and_queues_sync() {
-        let mut app = index(&[false; 2]);
-        press(&mut app, KeyCode::Tab.into());
-        assert!(app.rows[0].message.flagged);
-        assert_eq!(selected(&app), Some(1));
-        press(&mut app, key('k'));
-        press(&mut app, KeyCode::Tab.into());
-        assert!(!app.rows[0].message.flagged);
-        assert_eq!(app.pending, BTreeMap::from([((Flag::Flagged, 1), false)]));
-    }
-
-    #[test]
-    fn pager_opens_adjacent_within_bounds() {
-        let mut app = pager(index(&[false; 3]), 0, 1);
-        assert_eq!(press(&mut app, key('K')), None);
-        assert_eq!(press(&mut app, key('J')), Some(Effect::Open(1)));
-
-        let mut app = pager(index(&[false; 3]), 2, 1);
-        assert_eq!(press(&mut app, key('J')), None);
-        assert_eq!(press(&mut app, key('K')), Some(Effect::Open(1)));
-    }
-
-    #[test]
-    fn pager_scrolls_within_bounds() {
-        let mut app = pager(index(&[false]), 0, 10);
-        press(&mut app, key('k'));
-        assert_eq!(scroll(&app), 0);
-        press(&mut app, ctrl('f'));
-        assert_eq!(scroll(&app), 5);
-        press(&mut app, key('G'));
-        assert_eq!(scroll(&app), 9);
-        press(&mut app, key('j'));
-        assert_eq!(scroll(&app), 9);
-        press(&mut app, ctrl('u'));
-        assert_eq!(scroll(&app), 7);
-        press(&mut app, key('g'));
-        assert_eq!(scroll(&app), 0);
-    }
-
-    #[test]
-    fn pager_goes_back_to_index() {
-        let mut app = pager(index(&[false]), 0, 1);
-        assert_eq!(press(&mut app, key('q')), None);
-        assert!(matches!(app.mode, Mode::Index));
-    }
-
-    /// Foreground color of the first span of each rendered line.
-    fn colors(text: &str) -> Vec<Option<Color>> {
-        let lines: Vec<String> = text.lines().map(str::to_string).collect();
-        style_message(&lines, 80)
-            .iter()
-            .map(|l| l.spans[0].style.fg)
-            .collect()
-    }
-
-    #[test]
-    fn colors_patch_body() {
-        let got = colors(
-            "Subject: [PATCH] x\n\n- a bullet, not a diff\n---\n f | 1 +\n\ndiff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n context\n\nTrailing prose\n-- \n2.50.0",
-        );
-        assert_eq!(
-            got,
-            vec![
-                Some(HEADER_PRIMARY_COLOR),
-                None,
-                None, // bullet
-                None, // ---
-                None, // diffstat
-                None,
-                None, // diff --git (bold only)
-                None, // ---
-                None, // +++
-                Some(DIFF_HUNK_COLOR),
-                Some(DIFF_DEL_COLOR),
-                Some(DIFF_ADD_COLOR),
-                None, // context
-                None, // blank
-                None, // prose leaves the diff
-                Some(META_COLOR),
-                Some(META_COLOR),
-            ]
-        );
-    }
-
-    #[test]
-    fn wraps_by_display_width() {
-        let lines = vec![
-            "abcdefgh".to_string(),
-            "".to_string(),
-            "日本語テキスト".to_string(),
-        ];
-        assert_eq!(
-            wrap_lines(&lines, 6),
-            vec!["abcdef", "gh", "", "日本語", "テキス", "ト"]
-        );
     }
 }
