@@ -50,7 +50,7 @@ enum Mode {
 ///
 /// Exiting, or a blocking call that needs a status notice drawn first.
 enum Effect {
-    /// Leave the event loop and log out.
+    /// Leave the event loop.
     Quit,
     /// Fetch row `i` and show it in the pager.
     Open(usize),
@@ -66,14 +66,12 @@ enum Status {
     Error(String),
 }
 
-/// Application state: the index rows, the IMAP client, and the current screen.
+/// UI state: the index rows, the current screen, and unsynced flag changes.
 pub struct App {
     /// Threaded index rows, in display order.
     rows: Vec<Row>,
     /// Name of the open mailbox, shown on the status line.
     mailbox: String,
-    /// IMAP session used to fetch bodies and push flag changes.
-    client: Client,
     /// Index selection and scroll offset.
     state: ListState,
     /// Which screen is showing.
@@ -86,7 +84,7 @@ pub struct App {
 
 impl App {
     /// Creates the view with the first row selected.
-    pub fn new(rows: Vec<Row>, mailbox: String, client: Client) -> Self {
+    pub fn new(rows: Vec<Row>, mailbox: String) -> Self {
         let mut state = ListState::default();
         if !rows.is_empty() {
             state.select(Some(0));
@@ -94,7 +92,6 @@ impl App {
         Self {
             rows,
             mailbox,
-            client,
             state,
             mode: Mode::Index,
             status: None,
@@ -102,8 +99,8 @@ impl App {
         }
     }
 
-    /// Event loop: redraws and handles keys until the user quits, then logs out.
-    pub fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
+    /// Event loop: redraws and handles keys until the user quits.
+    pub fn run(mut self, terminal: &mut DefaultTerminal, client: &mut Client) -> Result<()> {
         loop {
             terminal.draw(|f| self.draw(f))?;
             let Event::Key(key) = event::read()? else {
@@ -125,15 +122,14 @@ impl App {
                 Some(Effect::Quit) => break,
                 Some(Effect::Open(i)) => {
                     self.notify(terminal, "Fetching message...")?;
-                    self.open(i);
+                    self.open(client, i);
                 }
                 Some(Effect::Sync) => {
                     self.notify(terminal, "Syncing...")?;
-                    self.sync();
+                    self.sync(client);
                 }
             }
         }
-        self.client.logout();
         Ok(())
     }
 
@@ -221,9 +217,9 @@ impl App {
     /// Fetches row `i`, then selects it and switches to the pager, marking it
     /// read locally (`PEEK` leaves the server's `\Seen` untouched until a
     /// sync). On failure the selection and screen stay as they were.
-    fn open(&mut self, i: usize) {
+    fn open(&mut self, client: &mut Client, i: usize) {
         let uid = self.rows[i].message.uid;
-        match self.client.fetch_body(uid) {
+        match client.fetch_body(uid) {
             Ok(text) => {
                 self.select(i);
                 self.mark_read(i);
@@ -281,14 +277,14 @@ impl App {
     }
 
     /// Pushes local flag changes to the server.
-    fn sync(&mut self) {
+    fn sync(&mut self, client: &mut Client) {
         let mut groups: BTreeMap<(Flag, bool), Vec<u32>> = BTreeMap::new();
         for (&(flag, uid), &on) in &self.pending {
             groups.entry((flag, on)).or_default().push(uid);
         }
         let result = groups
             .iter()
-            .try_for_each(|(&(flag, on), uids)| self.client.store_flag(uids, flag, on));
+            .try_for_each(|(&(flag, on), uids)| client.store_flag(uids, flag, on));
 
         match result {
             Ok(()) => {
