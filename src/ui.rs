@@ -49,6 +49,7 @@ enum Mode {
 /// Work a key handler leaves to the event loop.
 ///
 /// Exiting, or a blocking call that needs a status notice drawn first.
+#[derive(Debug, PartialEq, Eq)]
 enum Effect {
     /// Leave the event loop.
     Quit,
@@ -632,6 +633,217 @@ fn pad(s: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mail::Message;
+
+    /// Terminal size giving a page of 5 rows.
+    const SIZE: Size = Size {
+        width: 80,
+        height: 7,
+    };
+
+    /// An index over rows with UIDs 1.. and the given unread states.
+    fn index(unread: &[bool]) -> App {
+        let rows = unread
+            .iter()
+            .enumerate()
+            .map(|(i, &unread)| Row {
+                message: Message {
+                    uid: i as u32 + 1,
+                    date: None,
+                    sender: String::new(),
+                    subject: String::new(),
+                    message_id: None,
+                    references: Vec::new(),
+                    unread,
+                    answered: false,
+                    deleted: false,
+                    flagged: false,
+                    relation: Relation::None,
+                },
+                prefix: String::new(),
+            })
+            .collect();
+        App::new(rows, "INBOX".to_string())
+    }
+
+    /// The same app with row `i` selected and `n` lines open in the pager.
+    fn pager(mut app: App, i: usize, n: usize) -> App {
+        app.select(i);
+        app.mode = Mode::Pager {
+            lines: vec!["x".to_string(); n],
+            scroll: 0,
+        };
+        app
+    }
+
+    fn press(app: &mut App, key: KeyEvent) -> Option<Effect> {
+        match app.mode {
+            Mode::Index => app.handle_index_key(key, SIZE),
+            Mode::Pager { .. } => app.handle_pager_key(key, SIZE),
+        }
+    }
+
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::from(KeyCode::Char(c))
+    }
+
+    fn ctrl(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    fn selected(app: &App) -> Option<usize> {
+        app.state.selected()
+    }
+
+    fn scroll(app: &App) -> usize {
+        match app.mode {
+            Mode::Pager { scroll, .. } => scroll,
+            Mode::Index => panic!("not in the pager"),
+        }
+    }
+
+    #[test]
+    fn index_keys_return_effects() {
+        let mut app = index(&[false; 3]);
+        assert_eq!(press(&mut app, key('j')), None);
+        assert_eq!(
+            press(&mut app, KeyCode::Enter.into()),
+            Some(Effect::Open(1))
+        );
+        assert_eq!(press(&mut app, ctrl('r')), Some(Effect::Sync));
+        assert_eq!(press(&mut app, key('q')), Some(Effect::Quit));
+        assert_eq!(press(&mut app, KeyCode::Esc.into()), Some(Effect::Quit));
+    }
+
+    #[test]
+    fn empty_index_opens_nothing() {
+        let mut app = index(&[]);
+        assert_eq!(press(&mut app, key('j')), None);
+        assert_eq!(press(&mut app, ctrl('f')), None);
+        assert_eq!(press(&mut app, KeyCode::Enter.into()), None);
+        assert_eq!(selected(&app), None);
+    }
+
+    #[test]
+    fn moves_within_bounds() {
+        let mut app = index(&[false; 3]);
+        press(&mut app, key('k'));
+        assert_eq!(selected(&app), Some(0));
+        press(&mut app, key('G'));
+        assert_eq!(selected(&app), Some(2));
+        press(&mut app, key('j'));
+        assert_eq!(selected(&app), Some(2));
+        press(&mut app, key('g'));
+        assert_eq!(selected(&app), Some(0));
+    }
+
+    #[test]
+    fn jumps_between_unread() {
+        let mut app = index(&[false, true, false, true]);
+        press(&mut app, key('J'));
+        assert_eq!(selected(&app), Some(1));
+        press(&mut app, key('J'));
+        assert_eq!(selected(&app), Some(3));
+        press(&mut app, key('J'));
+        assert_eq!(selected(&app), Some(3));
+        press(&mut app, key('K'));
+        assert_eq!(selected(&app), Some(1));
+        press(&mut app, key('K'));
+        assert_eq!(selected(&app), Some(1));
+    }
+
+    #[test]
+    fn pages_keep_selection_on_screen() {
+        let mut app = index(&[false; 10]);
+        press(&mut app, ctrl('f'));
+        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
+        // Already at the last full page.
+        press(&mut app, ctrl('f'));
+        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
+        press(&mut app, ctrl('b'));
+        assert_eq!((app.state.offset(), selected(&app)), (0, Some(4)));
+        press(&mut app, ctrl('d'));
+        assert_eq!((app.state.offset(), selected(&app)), (2, Some(4)));
+    }
+
+    #[test]
+    fn selects_visible_rows() {
+        let mut app = index(&[false; 10]);
+        press(&mut app, key('L'));
+        assert_eq!(selected(&app), Some(4));
+        press(&mut app, key('M'));
+        assert_eq!(selected(&app), Some(2));
+        press(&mut app, key('H'));
+        assert_eq!(selected(&app), Some(0));
+
+        // Fewer rows than a page.
+        let mut app = index(&[false; 3]);
+        press(&mut app, key('L'));
+        assert_eq!(selected(&app), Some(2));
+    }
+
+    #[test]
+    fn toggles_read_and_queues_sync() {
+        let mut app = index(&[true, false]);
+        press(&mut app, key(' '));
+        assert!(!app.rows[0].message.unread);
+        assert_eq!(selected(&app), Some(1));
+        // The last row stays selected.
+        press(&mut app, key(' '));
+        assert!(app.rows[1].message.unread);
+        assert_eq!(selected(&app), Some(1));
+        assert_eq!(
+            app.pending,
+            BTreeMap::from([((Flag::Seen, 1), true), ((Flag::Seen, 2), false)])
+        );
+    }
+
+    #[test]
+    fn toggles_flagged_and_queues_sync() {
+        let mut app = index(&[false; 2]);
+        press(&mut app, KeyCode::Tab.into());
+        assert!(app.rows[0].message.flagged);
+        assert_eq!(selected(&app), Some(1));
+        press(&mut app, key('k'));
+        press(&mut app, KeyCode::Tab.into());
+        assert!(!app.rows[0].message.flagged);
+        assert_eq!(app.pending, BTreeMap::from([((Flag::Flagged, 1), false)]));
+    }
+
+    #[test]
+    fn pager_opens_adjacent_within_bounds() {
+        let mut app = pager(index(&[false; 3]), 0, 1);
+        assert_eq!(press(&mut app, key('K')), None);
+        assert_eq!(press(&mut app, key('J')), Some(Effect::Open(1)));
+
+        let mut app = pager(index(&[false; 3]), 2, 1);
+        assert_eq!(press(&mut app, key('J')), None);
+        assert_eq!(press(&mut app, key('K')), Some(Effect::Open(1)));
+    }
+
+    #[test]
+    fn pager_scrolls_within_bounds() {
+        let mut app = pager(index(&[false]), 0, 10);
+        press(&mut app, key('k'));
+        assert_eq!(scroll(&app), 0);
+        press(&mut app, ctrl('f'));
+        assert_eq!(scroll(&app), 5);
+        press(&mut app, key('G'));
+        assert_eq!(scroll(&app), 9);
+        press(&mut app, key('j'));
+        assert_eq!(scroll(&app), 9);
+        press(&mut app, ctrl('u'));
+        assert_eq!(scroll(&app), 7);
+        press(&mut app, key('g'));
+        assert_eq!(scroll(&app), 0);
+    }
+
+    #[test]
+    fn pager_goes_back_to_index() {
+        let mut app = pager(index(&[false]), 0, 1);
+        assert_eq!(press(&mut app, key('q')), None);
+        assert!(matches!(app.mode, Mode::Index));
+    }
 
     /// Foreground color of the first span of each rendered line.
     fn colors(text: &str) -> Vec<Option<Color>> {
