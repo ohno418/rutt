@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Size};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
@@ -44,6 +44,18 @@ enum Mode {
         lines: Vec<String>,
         scroll: usize,
     },
+}
+
+/// Work a key handler leaves to the event loop.
+///
+/// Exiting, or a blocking call that needs a status notice drawn first.
+enum Effect {
+    /// Leave the event loop and log out.
+    Quit,
+    /// Fetch row `i` and show it in the pager.
+    Open(usize),
+    /// Push pending flag changes to the server.
+    Sync,
 }
 
 /// A message that temporarily takes over the status line.
@@ -103,21 +115,31 @@ impl App {
             if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                 break;
             }
-            let quit = match self.mode {
-                Mode::Index => self.handle_index_key(key, terminal)?,
-                Mode::Pager { .. } => self.handle_pager_key(key, terminal)?,
+            let size = terminal.size()?;
+            let effect = match self.mode {
+                Mode::Index => self.handle_index_key(key, size),
+                Mode::Pager { .. } => self.handle_pager_key(key, size),
             };
-            if quit {
-                break;
+            match effect {
+                None => {}
+                Some(Effect::Quit) => break,
+                Some(Effect::Open(i)) => {
+                    self.notify(terminal, "Fetching message...")?;
+                    self.open(i);
+                }
+                Some(Effect::Sync) => {
+                    self.notify(terminal, "Syncing...")?;
+                    self.sync();
+                }
             }
         }
         self.client.logout();
         Ok(())
     }
 
-    /// Handles index keys.
-    fn handle_index_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
-        let page = page_height(terminal.size()?);
+    /// Handles a key on the index and returns any required effect.
+    fn handle_index_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
+        let page = page_height(size);
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             let half = (page / 2).max(1) as isize;
             match key.code {
@@ -127,13 +149,13 @@ impl App {
                 KeyCode::Char('u') => self.page_by(-half, page),
                 KeyCode::Char('e') => self.page_by(1, page),
                 KeyCode::Char('y') => self.page_by(-1, page),
-                KeyCode::Char('r') => self.sync(terminal)?,
+                KeyCode::Char('r') => return Some(Effect::Sync),
                 _ => {}
             }
-            return Ok(false);
+            return None;
         }
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
+            KeyCode::Char('q') | KeyCode::Esc => return Some(Effect::Quit),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('J') => self.select_unread(1),
@@ -143,20 +165,19 @@ impl App {
             KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
             KeyCode::PageDown => self.page_by(page as isize, page),
             KeyCode::PageUp => self.page_by(-(page as isize), page),
-            KeyCode::Enter => self.open_selected(terminal)?,
+            KeyCode::Enter => return self.state.selected().map(Effect::Open),
             KeyCode::Char(' ') => self.toggle_selected_read(),
             KeyCode::Tab => self.toggle_selected_flagged(),
             _ => {}
         }
-        Ok(false)
+        None
     }
 
-    /// Handles pager keys.
-    fn handle_pager_key(&mut self, key: KeyEvent, terminal: &mut DefaultTerminal) -> Result<bool> {
-        let size = terminal.size()?;
+    /// Handles a key in the pager and returns any required effect.
+    fn handle_pager_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
         let page = page_height(size);
         let Mode::Pager { lines, scroll } = &mut self.mode else {
-            return Ok(false);
+            return None;
         };
         let max = wrap_lines(lines, size.width as usize)
             .len()
@@ -172,21 +193,21 @@ impl App {
                 KeyCode::Char('y') => *scroll = scroll.saturating_sub(1),
                 _ => {}
             }
-            return Ok(false);
+            return None;
         }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Index,
             KeyCode::Char('j') | KeyCode::Down => *scroll = (*scroll + 1).min(max),
             KeyCode::Char('k') | KeyCode::Up => *scroll = scroll.saturating_sub(1),
-            KeyCode::Char('J') => self.open_adjacent(1, terminal)?,
-            KeyCode::Char('K') => self.open_adjacent(-1, terminal)?,
+            KeyCode::Char('J') => return self.adjacent(1).map(Effect::Open),
+            KeyCode::Char('K') => return self.adjacent(-1).map(Effect::Open),
             KeyCode::PageDown => *scroll = (*scroll + page).min(max),
             KeyCode::PageUp => *scroll = scroll.saturating_sub(page),
             KeyCode::Char('g') | KeyCode::Home => *scroll = 0,
             KeyCode::Char('G') | KeyCode::End => *scroll = max,
             _ => {}
         }
-        Ok(false)
+        None
     }
 
     /// Shows `text` on the status line while the blocking call that follows
@@ -197,16 +218,14 @@ impl App {
         Ok(())
     }
 
-    /// Fetches the selected message and switches to the pager, marking it read
-    /// locally (`PEEK` leaves the server's `\Seen` untouched until a sync).
-    fn open_selected(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
-        let Some(i) = self.state.selected() else {
-            return Ok(());
-        };
-        self.notify(terminal, "Fetching message...")?;
+    /// Fetches row `i`, then selects it and switches to the pager, marking it
+    /// read locally (`PEEK` leaves the server's `\Seen` untouched until a
+    /// sync). On failure the selection and screen stay as they were.
+    fn open(&mut self, i: usize) {
         let uid = self.rows[i].message.uid;
         match self.client.fetch_body(uid) {
             Ok(text) => {
+                self.select(i);
                 self.mark_read(i);
                 self.status = None;
                 self.mode = Mode::Pager {
@@ -216,25 +235,14 @@ impl App {
             }
             Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
         }
-        Ok(())
     }
 
-    /// Opens the message after/before the current one in the pager; stays put
-    /// at either end. The selection is restored if the fetch fails.
-    fn open_adjacent(&mut self, dir: isize, terminal: &mut DefaultTerminal) -> Result<()> {
-        let Some(cur) = self.state.selected() else {
-            return Ok(());
-        };
-        let next = cur as isize + dir;
-        if next < 0 || next >= self.rows.len() as isize {
-            return Ok(());
-        }
-        self.select(next as usize);
-        self.open_selected(terminal)?;
-        if matches!(self.status, Some(Status::Error(_))) {
-            self.select(cur);
-        }
-        Ok(())
+    /// The row after/before the selection; `None` at either end.
+    fn adjacent(&self, dir: isize) -> Option<usize> {
+        let next = self.state.selected()? as isize + dir;
+        (0..self.rows.len() as isize)
+            .contains(&next)
+            .then_some(next as usize)
     }
 
     /// Flips the selected message between read and unread without opening it,
@@ -273,9 +281,7 @@ impl App {
     }
 
     /// Pushes local flag changes to the server.
-    fn sync(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
-        self.notify(terminal, "Syncing...")?;
-
+    fn sync(&mut self) {
         let mut groups: BTreeMap<(Flag, bool), Vec<u32>> = BTreeMap::new();
         for (&(flag, uid), &on) in &self.pending {
             groups.entry((flag, on)).or_default().push(uid);
@@ -291,8 +297,6 @@ impl App {
             }
             Err(e) => self.status = Some(Status::Error(format!("{e:#}"))),
         }
-
-        Ok(())
     }
 
     /// Jumps to the nearest unread row after/before the selection; stays put
@@ -535,7 +539,7 @@ fn style_message(lines: &[String], width: usize) -> Vec<Line<'static>> {
 
 /// Rows in one page of the main area (screen minus status line, minus one
 /// line of overlap for scroll context).
-fn page_height(size: ratatui::layout::Size) -> usize {
+fn page_height(size: Size) -> usize {
     size.height.saturating_sub(2).max(1) as usize
 }
 
