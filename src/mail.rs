@@ -46,6 +46,25 @@ pub enum Relation {
     CcMe,
 }
 
+/// A system flag the user can change from the index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Flag {
+    /// `\Seen`.
+    Seen,
+    /// `\Flagged`.
+    Flagged,
+}
+
+impl Flag {
+    /// The flag as written in an IMAP `STORE` command.
+    fn imap_name(self) -> &'static str {
+        match self {
+            Flag::Seen => "\\Seen",
+            Flag::Flagged => "\\Flagged",
+        }
+    }
+}
+
 /// Fetches only the headers needed for the index; `PEEK` keeps `\Seen` untouched.
 const FETCH_QUERY: &str = "(UID FLAGS BODY.PEEK[HEADER.FIELDS (DATE FROM TO CC SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])";
 
@@ -111,8 +130,8 @@ impl Client {
         render_message(raw)
     }
 
-    /// Sets or clears `\Seen` on `uids` (`+FLAGS`/`-FLAGS`); no-op when empty.
-    pub fn set_seen(&mut self, uids: &[u32], seen: bool) -> Result<()> {
+    /// Sets or clears `flag` on `uids` (`+FLAGS`/`-FLAGS`); no-op when empty.
+    pub fn store_flag(&mut self, uids: &[u32], flag: Flag, on: bool) -> Result<()> {
         if uids.is_empty() {
             return Ok(());
         }
@@ -122,10 +141,10 @@ impl Client {
             .map(u32::to_string)
             .collect::<Vec<_>>()
             .join(",");
-        let op = if seen { '+' } else { '-' };
+        let op = if on { '+' } else { '-' };
         self.session
-            .uid_store(&set, format!("{op}FLAGS.SILENT (\\Seen)"))
-            .context("failed to sync read status")?;
+            .uid_store(&set, format!("{op}FLAGS.SILENT ({})", flag.imap_name()))
+            .with_context(|| format!("failed to sync {}", flag.imap_name()))?;
         Ok(())
     }
 

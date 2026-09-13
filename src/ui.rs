@@ -11,7 +11,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
 use unicode_width::UnicodeWidthStr;
 
-use crate::mail::{Client, Relation};
+use crate::mail::{Client, Flag, Relation};
 use crate::thread::Row;
 
 const DATE_WIDTH: usize = 16; // "2026-12-31 23:59"
@@ -68,8 +68,8 @@ pub struct App {
     mode: Mode,
     /// Message taking over the status line; `None` shows the usual content.
     status: Option<Status>,
-    /// Read-state changes not yet synced to the server: UID to its new `unread`.
-    pending: BTreeMap<u32, bool>,
+    /// Flag changes not yet synced to the server: (flag, UID) to whether it is set.
+    pending: BTreeMap<(Flag, u32), bool>,
 }
 
 impl App {
@@ -145,6 +145,7 @@ impl App {
             KeyCode::PageUp => self.page_by(-(page as isize), page),
             KeyCode::Enter => self.open_selected(terminal)?,
             KeyCode::Char(' ') => self.toggle_selected_read(),
+            KeyCode::Tab => self.toggle_selected_flagged(),
             _ => {}
         }
         Ok(false)
@@ -257,25 +258,31 @@ impl App {
     fn set_unread(&mut self, i: usize, unread: bool) {
         let m = &mut self.rows[i].message;
         m.unread = unread;
-        self.pending.insert(m.uid, unread);
+        self.pending.insert((Flag::Seen, m.uid), !unread);
     }
 
-    /// Pushes local read-state changes to the server.
+    /// Flips the selected message between flagged and unflagged locally,
+    /// queues it for the next sync, then advances to the next row.
+    fn toggle_selected_flagged(&mut self) {
+        if let Some(i) = self.state.selected() {
+            let m = &mut self.rows[i].message;
+            m.flagged = !m.flagged;
+            self.pending.insert((Flag::Flagged, m.uid), m.flagged);
+            self.move_by(1);
+        }
+    }
+
+    /// Pushes local flag changes to the server.
     fn sync(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         self.notify(terminal, "Syncing...")?;
 
-        let uids = |unread: bool| -> Vec<u32> {
-            self.pending
-                .iter()
-                .filter(|&(_, &u)| u == unread)
-                .map(|(&uid, _)| uid)
-                .collect()
-        };
-        let (seen, unseen) = (uids(false), uids(true));
-        let result = self
-            .client
-            .set_seen(&seen, true)
-            .and_then(|()| self.client.set_seen(&unseen, false));
+        let mut groups: BTreeMap<(Flag, bool), Vec<u32>> = BTreeMap::new();
+        for (&(flag, uid), &on) in &self.pending {
+            groups.entry((flag, on)).or_default().push(uid);
+        }
+        let result = groups
+            .iter()
+            .try_for_each(|(&(flag, on), uids)| self.client.store_flag(uids, flag, on));
 
         match result {
             Ok(()) => {
@@ -376,7 +383,7 @@ impl App {
 
                 let unread = self.rows.iter().filter(|r| r.message.unread).count();
                 format!(
-                    " q:Quit  j/k:Move  Enter:Read  Space:Toggle  ^R:Sync   [{}] {} messages, {} unread",
+                    " q:Quit  j/k:Move  Enter:Read  Space:Toggle  Tab:Flag  ^R:Sync   [{}] {} messages, {} unread",
                     self.mailbox,
                     self.rows.len(),
                     unread
