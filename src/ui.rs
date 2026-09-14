@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Layout, Size};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{ListState, Paragraph};
 use ratatui::{DefaultTerminal, Frame};
@@ -65,6 +65,8 @@ pub struct App {
     status: Option<Status>,
     /// Flag changes not yet synced to the server: (flag, UID) to whether it is set.
     pending: BTreeMap<(Flag, u32), bool>,
+    /// Main area from the last draw; key handlers size pages from it.
+    viewport: Rect,
 }
 
 impl App {
@@ -81,6 +83,7 @@ impl App {
             mode: Mode::Index,
             status: None,
             pending: BTreeMap::new(),
+            viewport: Rect::default(),
         }
     }
 
@@ -97,10 +100,9 @@ impl App {
             if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
                 break;
             }
-            let size = terminal.size()?;
             let effect = match self.mode {
-                Mode::Index => self.handle_index_key(key, size),
-                Mode::Pager { .. } => self.handle_pager_key(key, size),
+                Mode::Index => self.handle_index_key(key),
+                Mode::Pager { .. } => self.handle_pager_key(key),
             };
             match effect {
                 None => {}
@@ -168,6 +170,7 @@ impl App {
     fn draw(&mut self, frame: &mut Frame) {
         let [main_area, status_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+        self.viewport = main_area;
 
         let status = match self.mode {
             Mode::Index => self.draw_index(frame, main_area),
@@ -186,31 +189,35 @@ impl App {
         };
         frame.render_widget(Paragraph::new(status).style(style), status_area);
     }
-}
 
-/// Rows in one page of the main area (screen minus status line, minus one
-/// line of overlap for scroll context).
-fn page_height(size: Size) -> usize {
-    size.height.saturating_sub(2).max(1) as usize
+    /// Rows visible in the main area.
+    fn visible_rows(&self) -> usize {
+        (self.viewport.height as usize).max(1)
+    }
+
+    /// Rows moved by a full page: one row of overlap for scroll context.
+    fn page_step(&self) -> usize {
+        self.visible_rows().saturating_sub(1).max(1)
+    }
+
+    /// Rows moved by a half page.
+    fn half_page_step(&self) -> usize {
+        (self.visible_rows() / 2).max(1)
+    }
 }
 
 /// Fixtures and key helpers for the index and pager tests.
 #[cfg(test)]
 mod testing {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use ratatui::layout::Size;
+    use ratatui::layout::Rect;
 
     use super::{App, Effect, Mode};
     use crate::mail::{Message, Relation};
     use crate::thread::Row;
 
-    /// Terminal size giving a page of 5 rows.
-    const SIZE: Size = Size {
-        width: 80,
-        height: 7,
-    };
-
-    /// An index over rows with UIDs 1.. and the given unread states.
+    /// An index over rows with UIDs 1.. and the given unread states, drawn
+    /// in a main area of 6 rows.
     pub(super) fn index(unread: &[bool]) -> App {
         let rows = unread
             .iter()
@@ -232,7 +239,10 @@ mod testing {
                 prefix: String::new(),
             })
             .collect();
-        App::new(rows, "INBOX".to_string())
+
+        let mut app = App::new(rows, "INBOX".to_string());
+        app.viewport = Rect::new(0, 0, 80, 6);
+        app
     }
 
     /// The same app with row `i` selected and `n` lines open in the pager.
@@ -247,8 +257,8 @@ mod testing {
 
     pub(super) fn press(app: &mut App, key: KeyEvent) -> Option<Effect> {
         match app.mode {
-            Mode::Index => app.handle_index_key(key, SIZE),
-            Mode::Pager { .. } => app.handle_pager_key(key, SIZE),
+            Mode::Index => app.handle_index_key(key),
+            Mode::Pager { .. } => app.handle_pager_key(key),
         }
     }
 

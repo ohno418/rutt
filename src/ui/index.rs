@@ -2,14 +2,14 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::{Rect, Size};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem};
 
 use super::text::pad;
 use super::theme::{FLAGGED_COLOR, META_COLOR, UNREAD_COLOR};
-use super::{App, Effect, page_height};
+use super::{App, Effect};
 use crate::mail::{Flag, Relation};
 use crate::thread::Row;
 
@@ -18,17 +18,17 @@ const SENDER_WIDTH: usize = 20;
 
 impl App {
     /// Handles a key on the index and returns any required effect.
-    pub(super) fn handle_index_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
-        let page = page_height(size);
+    pub(super) fn handle_index_key(&mut self, key: KeyEvent) -> Option<Effect> {
+        let page = self.page_step() as isize;
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            let half = (page / 2).max(1) as isize;
+            let half = self.half_page_step() as isize;
             match key.code {
-                KeyCode::Char('f') => self.page_by(page as isize, page),
-                KeyCode::Char('b') => self.page_by(-(page as isize), page),
-                KeyCode::Char('d') => self.page_by(half, page),
-                KeyCode::Char('u') => self.page_by(-half, page),
-                KeyCode::Char('e') => self.page_by(1, page),
-                KeyCode::Char('y') => self.page_by(-1, page),
+                KeyCode::Char('f') => self.page_by(page),
+                KeyCode::Char('b') => self.page_by(-page),
+                KeyCode::Char('d') => self.page_by(half),
+                KeyCode::Char('u') => self.page_by(-half),
+                KeyCode::Char('e') => self.page_by(1),
+                KeyCode::Char('y') => self.page_by(-1),
                 KeyCode::Char('r') => return Some(Effect::Sync),
                 _ => {}
             }
@@ -42,9 +42,9 @@ impl App {
             KeyCode::Char('K') => self.select_unread(-1),
             KeyCode::Char('g') | KeyCode::Home => self.select(0),
             KeyCode::Char('G') | KeyCode::End => self.select(self.rows.len().saturating_sub(1)),
-            KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c, page),
-            KeyCode::PageDown => self.page_by(page as isize, page),
-            KeyCode::PageUp => self.page_by(-(page as isize), page),
+            KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c),
+            KeyCode::PageDown => self.page_by(page),
+            KeyCode::PageUp => self.page_by(-page),
             KeyCode::Enter => return self.state.selected().map(Effect::Open),
             KeyCode::Char(' ') => self.toggle_selected_read(),
             KeyCode::Tab => self.toggle_selected_flagged(),
@@ -130,23 +130,23 @@ impl App {
 
     /// Scrolls the view by `delta` rows; the selection moves only as far as
     /// needed to stay on screen.
-    fn page_by(&mut self, delta: isize, page: usize) {
+    fn page_by(&mut self, delta: isize) {
         if self.rows.is_empty() {
             return;
         }
-        let offset = self.shift_offset(delta, page) as isize;
-        let cur = self.state.selected().unwrap_or(0) as isize;
-        let bottom = (offset + page as isize - 1).min(self.rows.len() as isize - 1);
-        self.state.select(Some(cur.clamp(offset, bottom) as usize));
+        let offset = self.shift_offset(delta);
+        let cur = self.state.selected().unwrap_or(0);
+        let bottom = (offset + self.visible_rows() - 1).min(self.rows.len() - 1);
+        self.state.select(Some(cur.clamp(offset, bottom)));
     }
 
     /// Selects the top, middle, or bottom row on screen without scrolling.
-    fn select_visible(&mut self, key: char, page: usize) {
+    fn select_visible(&mut self, key: char) {
         if self.rows.is_empty() {
             return;
         }
         let top = self.state.offset().min(self.rows.len() - 1);
-        let bottom = (top + page - 1).min(self.rows.len() - 1);
+        let bottom = (top + self.visible_rows() - 1).min(self.rows.len() - 1);
         self.select(match key {
             'H' => top,
             'L' => bottom,
@@ -155,8 +155,8 @@ impl App {
     }
 
     /// Moves the view offset by `delta`, clamped so the last page stays full.
-    fn shift_offset(&mut self, delta: isize, page: usize) -> usize {
-        let max = self.rows.len().saturating_sub(page) as isize;
+    fn shift_offset(&mut self, delta: isize) -> usize {
+        let max = self.rows.len().saturating_sub(self.visible_rows()) as isize;
         let offset = (self.state.offset() as isize + delta).clamp(0, max) as usize;
         *self.state.offset_mut() = offset;
         offset
@@ -289,21 +289,23 @@ mod tests {
     fn pages_keep_selection_on_screen() {
         let mut app = index(&[false; 10]);
         press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
+        assert_eq!((app.state.offset(), selected(&app)), (4, Some(4)));
         // Already at the last full page.
         press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (5, Some(5)));
+        assert_eq!((app.state.offset(), selected(&app)), (4, Some(4)));
+        // A selection still on screen stays put.
+        press(&mut app, key('j'));
         press(&mut app, ctrl('b'));
-        assert_eq!((app.state.offset(), selected(&app)), (0, Some(4)));
+        assert_eq!((app.state.offset(), selected(&app)), (0, Some(5)));
         press(&mut app, ctrl('d'));
-        assert_eq!((app.state.offset(), selected(&app)), (2, Some(4)));
+        assert_eq!((app.state.offset(), selected(&app)), (3, Some(5)));
     }
 
     #[test]
     fn selects_visible_rows() {
         let mut app = index(&[false; 10]);
         press(&mut app, key('L'));
-        assert_eq!(selected(&app), Some(4));
+        assert_eq!(selected(&app), Some(5));
         press(&mut app, key('M'));
         assert_eq!(selected(&app), Some(2));
         press(&mut app, key('H'));

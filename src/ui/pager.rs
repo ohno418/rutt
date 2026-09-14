@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::{Rect, Size};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -12,20 +12,19 @@ use super::theme::{
     DIFF_ADD_COLOR, DIFF_DEL_COLOR, DIFF_HUNK_COLOR, HEADER_PRIMARY_COLOR, HEADER_RECIPIENT_COLOR,
     META_COLOR, QUOTE_COLORS,
 };
-use super::{App, Effect, Mode, page_height};
+use super::{App, Effect, Mode};
 
 impl App {
     /// Handles a key in the pager and returns any required effect.
-    pub(super) fn handle_pager_key(&mut self, key: KeyEvent, size: Size) -> Option<Effect> {
-        let page = page_height(size);
+    pub(super) fn handle_pager_key(&mut self, key: KeyEvent) -> Option<Effect> {
+        let page = self.page_step();
+        let half = self.half_page_step();
+        let width = self.viewport.width as usize;
         let Mode::Pager { lines, scroll } = &mut self.mode else {
             return None;
         };
-        let max = wrap_lines(lines, size.width as usize)
-            .len()
-            .saturating_sub(1);
+        let max = wrap_lines(lines, width).len().saturating_sub(1);
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            let half = (page / 2).max(1);
             match key.code {
                 KeyCode::Char('f') => *scroll = (*scroll + page).min(max),
                 KeyCode::Char('b') => *scroll = scroll.saturating_sub(page),
@@ -263,7 +262,7 @@ mod tests {
         press(&mut app, key('j'));
         assert_eq!(scroll(&app), 9);
         press(&mut app, ctrl('u'));
-        assert_eq!(scroll(&app), 7);
+        assert_eq!(scroll(&app), 6);
         press(&mut app, key('g'));
         assert_eq!(scroll(&app), 0);
     }
