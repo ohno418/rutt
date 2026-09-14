@@ -45,7 +45,7 @@ impl App {
             KeyCode::Char(c @ ('H' | 'M' | 'L')) => self.select_visible(c),
             KeyCode::PageDown => self.page_by(page),
             KeyCode::PageUp => self.page_by(-page),
-            KeyCode::Enter => return self.state.selected().map(Effect::Open),
+            KeyCode::Enter => return self.index_state.selected().map(Effect::Open),
             KeyCode::Char(' ') => self.toggle_selected_read(),
             KeyCode::Tab => self.toggle_selected_flagged(),
             _ => {}
@@ -56,7 +56,7 @@ impl App {
     /// Flips the selected message between read and unread without opening it,
     /// then advances to the next row.
     fn toggle_selected_read(&mut self) {
-        if let Some(i) = self.state.selected() {
+        if let Some(i) = self.index_state.selected() {
             let unread = !self.rows[i].message.unread;
             self.set_unread(i, unread);
             self.move_by(1);
@@ -80,7 +80,7 @@ impl App {
     /// Flips the selected message between flagged and unflagged locally,
     /// queues it for the next sync, then advances to the next row.
     fn toggle_selected_flagged(&mut self) {
-        if let Some(i) = self.state.selected() {
+        if let Some(i) = self.index_state.selected() {
             let m = &mut self.rows[i].message;
             m.flagged = !m.flagged;
             self.pending.insert((Flag::Flagged, m.uid), m.flagged);
@@ -91,7 +91,7 @@ impl App {
     /// Jumps to the nearest unread row after/before the selection; stays put
     /// when there is none (no wrap-around).
     fn select_unread(&mut self, dir: isize) {
-        let Some(cur) = self.state.selected() else {
+        let Some(cur) = self.index_state.selected() else {
             return;
         };
         let found = if dir > 0 {
@@ -117,14 +117,14 @@ impl App {
         if self.rows.is_empty() {
             return;
         }
-        let cur = self.state.selected().unwrap_or(0) as isize;
+        let cur = self.index_state.selected().unwrap_or(0) as isize;
         let next = (cur + delta).clamp(0, self.rows.len() as isize - 1);
         self.select(next as usize);
     }
 
     pub(super) fn select(&mut self, i: usize) {
         if !self.rows.is_empty() {
-            self.state.select(Some(i));
+            self.index_state.select(Some(i));
         }
     }
 
@@ -135,9 +135,9 @@ impl App {
             return;
         }
         let offset = self.shift_offset(delta);
-        let cur = self.state.selected().unwrap_or(0);
+        let cur = self.index_state.selected().unwrap_or(0);
         let bottom = (offset + self.visible_rows() - 1).min(self.rows.len() - 1);
-        self.state.select(Some(cur.clamp(offset, bottom)));
+        self.index_state.select(Some(cur.clamp(offset, bottom)));
     }
 
     /// Selects the top, middle, or bottom row on screen without scrolling.
@@ -145,7 +145,7 @@ impl App {
         if self.rows.is_empty() {
             return;
         }
-        let top = self.state.offset().min(self.rows.len() - 1);
+        let top = self.index_state.offset().min(self.rows.len() - 1);
         let bottom = (top + self.visible_rows() - 1).min(self.rows.len() - 1);
         self.select(match key {
             'H' => top,
@@ -157,8 +157,8 @@ impl App {
     /// Moves the view offset by `delta`, clamped so the last page stays full.
     fn shift_offset(&mut self, delta: isize) -> usize {
         let max = self.rows.len().saturating_sub(self.visible_rows()) as isize;
-        let offset = (self.state.offset() as isize + delta).clamp(0, max) as usize;
-        *self.state.offset_mut() = offset;
+        let offset = (self.index_state.offset() as isize + delta).clamp(0, max) as usize;
+        *self.index_state.offset_mut() = offset;
         offset
     }
 
@@ -167,7 +167,7 @@ impl App {
         let items: Vec<ListItem> = self.rows.iter().map(render_row).collect();
         let list =
             List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        frame.render_stateful_widget(list, area, &mut self.state);
+        frame.render_stateful_widget(list, area, &mut self.index_state);
 
         let unread = self.rows.iter().filter(|r| r.message.unread).count();
         format!(
@@ -289,16 +289,16 @@ mod tests {
     fn pages_keep_selection_on_screen() {
         let mut app = index(&[false; 10]);
         press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (4, Some(4)));
+        assert_eq!((app.index_state.offset(), selected(&app)), (4, Some(4)));
         // Already at the last full page.
         press(&mut app, ctrl('f'));
-        assert_eq!((app.state.offset(), selected(&app)), (4, Some(4)));
+        assert_eq!((app.index_state.offset(), selected(&app)), (4, Some(4)));
         // A selection still on screen stays put.
         press(&mut app, key('j'));
         press(&mut app, ctrl('b'));
-        assert_eq!((app.state.offset(), selected(&app)), (0, Some(5)));
+        assert_eq!((app.index_state.offset(), selected(&app)), (0, Some(5)));
         press(&mut app, ctrl('d'));
-        assert_eq!((app.state.offset(), selected(&app)), (3, Some(5)));
+        assert_eq!((app.index_state.offset(), selected(&app)), (3, Some(5)));
     }
 
     #[test]

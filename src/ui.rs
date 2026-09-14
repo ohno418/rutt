@@ -60,7 +60,7 @@ pub struct App {
     /// Threaded index rows, in display order.
     rows: Vec<Row>,
     /// Index selection and scroll offset.
-    state: ListState,
+    index_state: ListState,
     /// Flag changes not yet synced to the server: (flag, UID) to whether it is set.
     pending: BTreeMap<(Flag, u32), bool>,
     /// Message taking over the status line; `None` shows the usual content.
@@ -72,15 +72,15 @@ pub struct App {
 impl App {
     /// Creates the view with the first row selected.
     pub fn new(rows: Vec<Row>, mailbox: String) -> Self {
-        let mut state = ListState::default();
+        let mut index_state = ListState::default();
         if !rows.is_empty() {
-            state.select(Some(0));
+            index_state.select(Some(0));
         }
         Self {
             mode: Mode::Index,
             mailbox,
             rows,
-            state,
+            index_state,
             pending: BTreeMap::new(),
             status: None,
             viewport: Rect::default(),
@@ -271,7 +271,7 @@ mod testing {
     }
 
     pub(super) fn selected(app: &App) -> Option<usize> {
-        app.state.selected()
+        app.index_state.selected()
     }
 
     pub(super) fn scroll(app: &App) -> usize {

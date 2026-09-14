@@ -53,7 +53,7 @@ impl App {
 
     /// The row after/before the selection; `None` at either end.
     fn adjacent(&self, dir: isize) -> Option<usize> {
-        let next = self.state.selected()? as isize + dir;
+        let next = self.index_state.selected()? as isize + dir;
         (0..self.rows.len() as isize)
             .contains(&next)
             .then_some(next as usize)
