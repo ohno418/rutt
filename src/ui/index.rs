@@ -47,7 +47,7 @@ impl App {
             KeyCode::PageUp => self.page_by(-page),
             KeyCode::Enter => return self.index_state.selected().map(Effect::Open),
             KeyCode::Char(' ') => self.toggle_selected_read(),
-            KeyCode::Tab => self.toggle_selected_flagged(),
+            KeyCode::Char('!') => self.toggle_selected_flagged(),
             _ => {}
         }
         None
@@ -171,7 +171,7 @@ impl App {
 
         let unread = self.rows.iter().filter(|r| r.message.unread).count();
         format!(
-            " q:Quit  j/k:Move  Enter:Read  Space:Toggle  Tab:Flag  ^R:Sync   [{}] {} messages, {} unread",
+            " q:Quit  j/k:Move  Enter:Read  Space:Toggle  !:Flag  ^R:Sync   [{}] {} messages, {} unread",
             self.mailbox,
             self.rows.len(),
             unread
@@ -336,11 +336,11 @@ mod tests {
     #[test]
     fn toggles_flagged_and_queues_sync() {
         let mut app = index(&[false; 2]);
-        press(&mut app, KeyCode::Tab.into());
+        press(&mut app, key('!'));
         assert!(app.rows[0].message.flagged);
         assert_eq!(selected(&app), Some(1));
         press(&mut app, key('k'));
-        press(&mut app, KeyCode::Tab.into());
+        press(&mut app, key('!'));
         assert!(!app.rows[0].message.flagged);
         assert_eq!(app.pending, BTreeMap::from([((Flag::Flagged, 1), false)]));
     }
