@@ -51,20 +51,20 @@ enum Status {
     Error(String),
 }
 
-/// UI state: the index rows, the current screen, and unsynced flag changes.
+/// UI state: the current screen, the index rows, and unsynced flag changes.
 pub struct App {
-    /// Threaded index rows, in display order.
-    rows: Vec<Row>,
-    /// Name of the open mailbox, shown on the status line.
-    mailbox: String,
-    /// Index selection and scroll offset.
-    state: ListState,
     /// Which screen is showing.
     mode: Mode,
-    /// Message taking over the status line; `None` shows the usual content.
-    status: Option<Status>,
+    /// Name of the open mailbox, shown on the status line.
+    mailbox: String,
+    /// Threaded index rows, in display order.
+    rows: Vec<Row>,
+    /// Index selection and scroll offset.
+    state: ListState,
     /// Flag changes not yet synced to the server: (flag, UID) to whether it is set.
     pending: BTreeMap<(Flag, u32), bool>,
+    /// Message taking over the status line; `None` shows the usual content.
+    status: Option<Status>,
     /// Main area from the last draw; key handlers size pages from it.
     viewport: Rect,
 }
@@ -77,12 +77,12 @@ impl App {
             state.select(Some(0));
         }
         Self {
-            rows,
-            mailbox,
-            state,
             mode: Mode::Index,
-            status: None,
+            mailbox,
+            rows,
+            state,
             pending: BTreeMap::new(),
+            status: None,
             viewport: Rect::default(),
         }
     }
