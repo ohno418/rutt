@@ -37,20 +37,24 @@ cargo run
 
 Index:
 
-| Key                       | Action                        |
-|---------------------------|-------------------------------|
-| `j` / `k`, `↓` / `↑`      | move                          |
-| `g` / `G`, `Home` / `End` | top / bottom                  |
-| `Enter`                   | read message                  |
-| `Space`                   | toggle read / unread          |
-| `Ctrl-R`                  | sync read state to the server |
-| `q`, `Esc`, `Ctrl-C`      | quit                          |
+| Key        | Action                       |
+|------------|------------------------------|
+| `j` / `k`  | move                         |
+| `J` / `K`  | next / previous unread       |
+| `g` / `G`  | top / bottom                 |
+| `Enter`    | read message                 |
+| `Space`    | toggle read / unread         |
+| `Ctrl-R`   | push flag changes to server  |
+| `q`, `Esc` | quit                         |
 
 Pager:
 
-| Key                       | Action          |
-|---------------------------|-----------------|
-| `j` / `k`, `↓` / `↑`      | scroll one line |
-| `g` / `G`, `Home` / `End` | top / bottom    |
-| `q`, `Esc`                | back to index   |
-| `Ctrl-C`                  | quit            |
+| Key        | Action                       |
+|------------|------------------------------|
+| `j` / `k`  | scroll one line              |
+| `g` / `G`  | top / bottom                 |
+| `J` / `K`  | read next / previous message |
+| `q`, `Esc` | back to index                |
+
+Both screens also accept Vim-style paging (`Ctrl-F` / `Ctrl-B`,
+`Ctrl-D` / `Ctrl-U`, ...).
