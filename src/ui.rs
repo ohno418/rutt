@@ -17,12 +17,15 @@ use ratatui::{DefaultTerminal, Frame};
 use crate::mail::{Client, Flag};
 use crate::thread::Row;
 
-/// Which screen is showing.
+/// The screen currently shown.
 enum Mode {
+    /// The threaded message list.
     Index,
-    /// Message text split into source lines, plus the scroll offset in wrapped lines.
+    /// A single message's text.
     Pager {
+        /// Message text split into source lines.
         lines: Vec<String>,
+        /// Scroll offset, counted in wrapped lines.
         scroll: usize,
     },
 }
